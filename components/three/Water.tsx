@@ -78,8 +78,9 @@ const FRAGMENT = /* glsl */ `
     vec3 shallow = vec3(0.22, 0.55, 0.60);
     vec3 sky = vec3(0.78, 0.90, 0.94);
 
-    float patch = vnoise(vWorldPos.xz * 0.045 + 3.7);
-    vec3 water = mix(deep, shallow, patch * 0.8 + (vWorldPos.y) * 0.4);
+    // "patch" is a reserved word in GLSL ES 3.0 — don't rename this back
+    float tonePatch = vnoise(vWorldPos.xz * 0.045 + 3.7);
+    vec3 water = mix(deep, shallow, tonePatch * 0.8 + (vWorldPos.y) * 0.4);
     vec3 col = mix(water, sky, 0.10 + 0.5 * fresnel);
 
     // sun glitter

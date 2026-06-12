@@ -33,7 +33,7 @@ export default function Scene({
 }) {
   return (
     <Canvas
-      shadows
+      shadows="percentage"
       dpr={[1, 1.75]}
       camera={{ position: [6, 10, 46], fov: 42, near: 0.5, far: 320 }}
       className="!fixed inset-0"
