@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hugo Correia — 3D Portfolio
 
-## Getting Started
+An interactive portfolio where a **moliceiro** sails the Ria de Aveiro. Each
+pier is a chapter of the CV.
 
-First, run the development server:
+## Two maps
+
+The toggle at the top switches worlds (the boat re-sails the intro on switch):
+
+- **Ilha** — an imagined island loop in the ria.
+- **Aveiro** — a stylized but geographically faithful model of the real canal
+  network: Canal Central, Canal do Cojo ending in the Fonte Nova lake, Canal
+  de São Roque with its salt warehouses and the Ponte de Carcassonne, the
+  Canal dos Botirões ring around the Beira-Mar quarter, and the Canal das
+  Pirâmides opening into the open ria toward Costa Nova and the Farol da
+  Barra. Ports sit at their real locations (Praça do Peixe, Rossio,
+  Troncalhada salinas, Fonte Nova). Free sailing is constrained to the
+  channels; the autopilot routes through the canal graph (Dijkstra) —
+  see `lib/aveiro.ts`.
+
+## Controls
+
+- **WASD / arrows** — take the helm and sail freely (momentum, rudder,
+  collisions with islands, piers and bridge abutments)
+- **Virtual joystick** — appears bottom-left on touch devices (force it with
+  `?joystick=1` for testing); analog thrust and rudder, second thumb drags to
+  orbit the camera
+- **Mouse drag** — orbit the camera around the boat (it eases back behind the
+  boat once you're underway) · **wheel** — zoom
+- **E / Enter** — dock when alongside a pier
+- **Click a pier or a dock pill (or keys 1–6)** — autopilot: the boat finds
+  the canal again and sails there on its own; arriving opens that chapter
+- **Esc** — close the panel
+
+| Port | Landmark | Section |
+| --- | --- | --- |
+| 01 Cais da Ria | Canal houses | About Me |
+| 02 Cais do Rossio | Art Nouveau facades | Experience |
+| 03 Cais da Costa Nova | Striped *palheiros* | Projects |
+| 04 Cais das Salinas | Salt pyramids | Skills |
+| 05 Cais da Universidade | UA brick buildings | Education |
+| 06 Cais do Farol | Farol da Barra lighthouse | Contact |
+
+## Stack
+
+Next.js (App Router) · React Three Fiber + drei · Tailwind CSS v4 ·
+TypeScript. The whole city is procedural low-poly geometry — no model files
+needed to run.
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Using the real moliceiro model
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The boat is procedural by default. To swap in the Sketchfab model
+["Moliceiro Aveiro" by André Bernardo](https://sketchfab.com/3d-models/moliceiro-aveiro-6661978e2edb4749addeb41c2ffaedec):
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Log in to Sketchfab → **Download 3D Model** → **glTF (.glb)** (only
+   possible if the author enabled downloads — the embed snippet alone does
+   not include the mesh).
+2. Save it as `public/models/moliceiro.glb`.
+3. Reload — the app detects the file and swaps the boat automatically.
+   If it sits oddly, tweak `GLB_TUNE` in `components/three/Moliceiro.tsx`.
 
-## Learn More
+The attribution line required by CC-BY is already rendered in the bottom-right
+corner of the page.
 
-To learn more about Next.js, take a look at the following resources:
+## Content
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+All CV content lives in `data/profile.ts`; the route/ports layout in
+`lib/ports.ts`. The downloadable CV is served from `public/cv/`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploy
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+vercel deploy
+```
