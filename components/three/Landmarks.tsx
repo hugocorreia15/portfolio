@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import * as THREE from "three";
 import type { PortDef } from "@/lib/ports";
 import { House, Tree } from "@/components/three/City";
+import { getTexture } from "@/lib/textures";
 
 /** Triangle prism roof with the ridge running along z — the Costa Nova gable. */
 function useGableGeometry(w: number, h: number, d: number) {
@@ -79,7 +80,11 @@ export function Facade({
     <group position={position}>
       <mesh position-y={h / 2} castShadow>
         <boxGeometry args={[w, h, 0.8]} />
-        <meshStandardMaterial color={color} roughness={0.9} />
+        <meshStandardMaterial
+          color={color}
+          roughness={0.9}
+          map={getTexture("plaster", 1.6, 3)}
+        />
       </mesh>
       {/* art nouveau cornice */}
       <mesh position-y={h + 0.08} castShadow>
@@ -168,7 +173,11 @@ function University() {
     <group>
       <mesh position={[-1, 0.95, 0]} castShadow>
         <boxGeometry args={[3.4, 1.9, 1.8]} />
-        <meshStandardMaterial color="#a8402f" roughness={0.95} />
+        <meshStandardMaterial
+          color="#a8402f"
+          roughness={0.95}
+          map={getTexture("brick", 2.4, 1.4)}
+        />
       </mesh>
       <mesh position={[-1, 1.97, 0]}>
         <boxGeometry args={[3.5, 0.14, 1.9]} />
@@ -176,7 +185,11 @@ function University() {
       </mesh>
       <mesh position={[1.7, 1.4, -0.2]} castShadow>
         <boxGeometry args={[1.9, 2.8, 1.5]} />
-        <meshStandardMaterial color="#b04a36" roughness={0.95} />
+        <meshStandardMaterial
+          color="#b04a36"
+          roughness={0.95}
+          map={getTexture("brick", 1.4, 2)}
+        />
       </mesh>
       <mesh position={[1.7, 2.87, -0.2]}>
         <boxGeometry args={[2.0, 0.14, 1.6]} />
@@ -255,16 +268,22 @@ function LandmarkContent({ id }: { id: PortDef["id"] }) {
 
 export default function Landmark({ port }: { port: PortDef }) {
   const isSalinas = port.id === "skills";
+  const r = port.platformR ?? 7;
+  const contentScale = Math.min(1, r / 6.2);
   return (
     <group
       position={[port.landmarkPos.x, 0, port.landmarkPos.z]}
       rotation-y={port.faceIn}
     >
       <mesh position-y={0.32} receiveShadow>
-        <cylinderGeometry args={[7, 7.7, 0.64, 32]} />
-        <meshStandardMaterial color={isSalinas ? "#ecdfbe" : "#e2cf9f"} roughness={1} />
+        <cylinderGeometry args={[r, r + 0.7, 0.64, 32]} />
+        <meshStandardMaterial
+          color={isSalinas ? "#ecdfbe" : "#e2cf9f"}
+          roughness={1}
+          map={getTexture(isSalinas ? "sand" : "calcada", 5, 5)}
+        />
       </mesh>
-      <group position-y={0.64}>
+      <group position-y={0.64} scale={contentScale}>
         <LandmarkContent id={port.id} />
       </group>
     </group>

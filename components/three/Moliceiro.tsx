@@ -6,6 +6,7 @@ import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { shortestDelta, wrap1 } from "@/lib/ports";
 import type { MapDef } from "@/lib/maps";
+import { getTexture } from "@/lib/textures";
 
 const GLB_URL = "/models/moliceiro.glb";
 /** Tweak these if you drop in the Sketchfab model and it sits oddly. */
@@ -92,7 +93,11 @@ export function ProceduralMoliceiro({
       {/* deck */}
       <mesh position={[-0.15, 0.56, 0]} castShadow>
         <boxGeometry args={[4.1, 0.1, 1.05]} />
-        <meshStandardMaterial color="#7a5230" roughness={0.95} />
+        <meshStandardMaterial
+          color="#8a6a47"
+          roughness={0.95}
+          map={getTexture("wood", 3, 1)}
+        />
       </mesh>
       {/* painted bow panels */}
       <group position={[2.35, 0.92, 0]} rotation-z={0.55}>

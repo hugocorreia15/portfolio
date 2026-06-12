@@ -1,6 +1,7 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
+import { Sky } from "@react-three/drei";
 import type { MapDef } from "@/lib/maps";
 import Water from "@/components/three/Water";
 import City from "@/components/three/City";
@@ -39,6 +40,14 @@ export default function Scene({
     >
       <color attach="background" args={["#d8edf2"]} />
       <fog attach="fog" args={["#d8edf2", 55, 175]} />
+      <Sky
+        sunPosition={[45, 60, 18]}
+        turbidity={3.2}
+        rayleigh={0.55}
+        mieCoefficient={0.004}
+        mieDirectionalG={0.85}
+        distance={3000}
+      />
 
       <hemisphereLight args={["#bfe6f0", "#caa97a", 0.55]} />
       <ambientLight intensity={0.25} />

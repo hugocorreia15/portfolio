@@ -8,15 +8,26 @@ pier is a chapter of the CV.
 The toggle at the top switches worlds (the boat re-sails the intro on switch):
 
 - **Ilha** — an imagined island loop in the ria.
-- **Aveiro** — a stylized but geographically faithful model of the real canal
-  network: Canal Central, Canal do Cojo ending in the Fonte Nova lake, Canal
-  de São Roque with its salt warehouses and the Ponte de Carcassonne, the
-  Canal dos Botirões ring around the Beira-Mar quarter, and the Canal das
-  Pirâmides opening into the open ria toward Costa Nova and the Farol da
-  Barra. Ports sit at their real locations (Praça do Peixe, Rossio,
-  Troncalhada salinas, Fonte Nova). Free sailing is constrained to the
-  channels; the autopilot routes through the canal graph (Dijkstra) —
-  see `lib/aveiro.ts`.
+- **Aveiro** — the real canal network, baked from OpenStreetMap (© OSM
+  contributors, ODbL): Canal do Côjo to the Fonte Nova lake, Canal de São
+  Roque with its salt warehouses, Canal das Pirâmides past the Marinha da
+  Troncalhada out into the ria, Canal do Paraíso and Canal dos Moliceiros.
+  Ports and bridges are anchored to real OSM coordinates (Praça do Peixe,
+  Museu Arte Nova, Troncalhada, Fonte Nova, Ponte da Dobadoura, the
+  Praça Humberto Delgado). Free sailing is constrained to the channels;
+  autopilot routes through the canal graph (Dijkstra) — see `lib/aveiro.ts`.
+
+### Regenerating / hand-tuning the canal map
+
+```bash
+node scripts/fetch-aveiro-canals.mjs   # re-bake from OpenStreetMap
+```
+
+To override with your own geometry: draw LineStrings on https://geojson.io
+(over the real map of Aveiro), save as `data/aveiro-canals.geojson`, and
+re-run the script — it prefers the local file over OSM. Quays, houses,
+bridges, ports and routing all regenerate from whatever centrelines you
+provide.
 
 ## Controls
 

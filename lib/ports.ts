@@ -31,6 +31,8 @@ export interface PortDef {
   landmarkPos: THREE.Vector3;
   /** rotation.y so a landmark's front (+z) faces the canal */
   faceIn: number;
+  /** landmark island/plaza radius (defaults to 7) */
+  platformR?: number;
 }
 
 const PORT_SEEDS: Array<

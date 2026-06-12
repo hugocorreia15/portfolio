@@ -4,6 +4,7 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { BRIDGE_TS, CANAL, mulberry32 } from "@/lib/ports";
+import { getTexture } from "@/lib/textures";
 
 const PASTELS = ["#f4d35e", "#ee6c4d", "#3d8ea9", "#e8a87c", "#9bc4bc", "#f2939b", "#d9b26f"];
 
@@ -26,15 +27,24 @@ export function House({
     <group position={position} rotation-y={rotY}>
       <mesh position-y={h / 2} castShadow>
         <boxGeometry args={[w, h, w * 0.85]} />
-        <meshStandardMaterial color={color} roughness={0.9} />
+        <meshStandardMaterial
+          color={color}
+          roughness={0.9}
+          map={getTexture("plaster", 2, 1.4)}
+        />
       </mesh>
       <mesh position-y={h + h * 0.3} rotation-y={Math.PI / 4} castShadow>
         <coneGeometry args={[w * 0.8, h * 0.62, 4]} />
-        <meshStandardMaterial color={roof} roughness={0.95} flatShading />
+        <meshStandardMaterial
+          color={roof}
+          roughness={0.95}
+          flatShading
+          map={getTexture("roofTiles", 2, 1)}
+        />
       </mesh>
       <mesh position={[0, h * 0.27, w * 0.44]}>
         <boxGeometry args={[w * 0.22, h * 0.5, 0.06]} />
-        <meshStandardMaterial color="#3d2c1f" />
+        <meshStandardMaterial color="#5a4128" map={getTexture("wood", 0.4, 1)} />
       </mesh>
     </group>
   );
@@ -75,7 +85,12 @@ export function ArchBridge({
       {/* arch shell — the boat sails through the opening */}
       <mesh rotation-x={Math.PI / 2} castShadow>
         <cylinderGeometry args={[r, r, span, 28, 1, true, Math.PI / 2, Math.PI]} />
-        <meshStandardMaterial color="#e9e2d2" side={THREE.DoubleSide} roughness={0.9} />
+        <meshStandardMaterial
+          color="#e9e2d2"
+          side={THREE.DoubleSide}
+          roughness={0.9}
+          map={getTexture("plaster", 4, 1)}
+        />
       </mesh>
       {/* railings along both edges of the deck */}
       {[-(span / 2 - 0.1), span / 2 - 0.1].map((z) => (
@@ -163,11 +178,11 @@ function MainIsland() {
     <group position={[-1, 0, 1]}>
       <mesh position-y={0.35} receiveShadow>
         <cylinderGeometry args={[14.5, 15.2, 0.7, 48]} />
-        <meshStandardMaterial color="#e2cf9f" roughness={1} />
+        <meshStandardMaterial color="#e2cf9f" roughness={1} map={getTexture("sand", 6, 6)} />
       </mesh>
       <mesh position-y={0.74} receiveShadow>
         <cylinderGeometry args={[13.6, 13.6, 0.1, 48]} />
-        <meshStandardMaterial color="#d9c697" roughness={1} />
+        <meshStandardMaterial color="#d9c697" roughness={1} map={getTexture("calcada", 10, 10)} />
       </mesh>
       <group position-y={0.74}>
         <Chapel />

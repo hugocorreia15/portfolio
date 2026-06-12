@@ -1,40 +1,98 @@
 import * as THREE from "three";
 import type { PortDef } from "@/lib/ports";
+import canalData from "@/data/aveiro-canals.json";
 
 /**
- * A geographically faithful (stylized) map of central Aveiro.
- * Coordinates are sketched from the real canal layout and scaled by S;
- * channel half-widths are absolute so canals stay ~2 boat-lengths wide.
- * North is -z, east is +x.
+ * The real Aveiro canal network, baked from OpenStreetMap by
+ * scripts/fetch-aveiro-canals.mjs (data © OpenStreetMap contributors, ODbL).
+ * Coordinates are world units (0.12 u/m), origin at the Praça Humberto
+ * Delgado, north = -z. Channel half-widths are gameplay-sized, not to scale.
  */
-const S = 1.7;
-const V = (x: number, z: number) => new THREE.Vector3(x * S, 0, z * S);
-/** position helper for JSX: raw map coords -> scaled [x, y, z] */
-export const P = (x: number, z: number, y = 0): [number, number, number] => [x * S, y, z * S];
-export const AVEIRO_SCALE = S;
 
-interface Channel {
+interface BakedEdge {
+  name?: string;
+  pts: [number, number][];
+}
+interface BakedPoi {
   name: string;
-  pts: THREE.Vector3[];
-  halfW: number;
+  x: number;
+  z: number;
 }
 
-const CHANNELS: Channel[] = [
-  { name: "Canal das Pirâmides", pts: [V(-46, 8), V(-32, 8), V(-18, 6)], halfW: 5 },
-  { name: "Canal Central (oeste)", pts: [V(-18, 6), V(-4, 1), V(4, -2)], halfW: 5.5 },
-  { name: "Canal Central (este)", pts: [V(4, -2), V(14, -7), V(24, -11)], halfW: 5.5 },
-  { name: "Canal do Cojo", pts: [V(24, -11), V(33, -13), V(40, -15)], halfW: 4.5 },
-  { name: "Lago da Fonte Nova", pts: [V(40, -15), V(52, -17)], halfW: 9.5 },
-  { name: "Canal de São Roque (este)", pts: [V(-18, 6), V(-17, -8), V(-12, -20)], halfW: 4.5 },
+const BAKED_EDGES = canalData.edges as BakedEdge[];
+const POIS = canalData.pois as BakedPoi[];
+
+const V3 = (x: number, z: number) => new THREE.Vector3(x, 0, z);
+
+function poi(pattern: RegExp): THREE.Vector3 | null {
+  const hits = POIS.filter((p) => pattern.test(p.name));
+  if (!hits.length) return null;
+  const x = hits.reduce((a, p) => a + p.x, 0) / hits.length;
+  const z = hits.reduce((a, p) => a + p.z, 0) / hits.length;
+  return V3(x, z);
+}
+
+// ---------------------------------------------------------------- channels
+
+export interface Channel {
+  name?: string;
+  pts: THREE.Vector3[];
+  halfW: number;
+  /** city canals get quays and houses; ria water does not */
+  city: boolean;
+}
+
+const HALFW_BY_NAME: Array<[RegExp, number]> = [
+  [/Côjo/i, 5.5],
+  [/Pirâmides/i, 6],
+  [/São Roque/i, 4.8],
+  [/Principal/i, 14],
+  [/Moliceiros|Paraíso|Esteiro/i, 4.5],
+  [/Cale da Vala/i, 5],
+];
+
+function halfWFor(name?: string) {
+  if (name) {
+    for (const [re, w] of HALFW_BY_NAME) if (re.test(name)) return w;
+  }
+  return 4.8;
+}
+
+export const CHANNELS: Channel[] = [
+  ...BAKED_EDGES.map((e) => {
+    const halfW = halfWFor(e.name);
+    return {
+      name: e.name,
+      pts: e.pts.map(([x, z]) => V3(x, z)),
+      halfW,
+      city: halfW <= 7,
+    };
+  }),
+  // the lake and the open ria are not OSM waterway centrelines — added by hand
   {
-    name: "Canal de São Roque (oeste)",
-    pts: [V(-12, -20), V(-22, -20), V(-34, -23), V(-44, -22), V(-52, -16), V(-56, 2)],
-    halfW: 4.5,
+    name: "Lago da Fonte Nova",
+    pts: [V3(101.49, 14.02), V3(97, 28), V3(93, 38)],
+    halfW: 8,
+    city: false,
   },
-  { name: "Canal dos Botirões", pts: [V(4, -2), V(-1, -11), V(-12, -20)], halfW: 4 },
-  { name: "Ria (sul)", pts: [V(-46, 8), V(-58, 18), V(-64, 30)], halfW: 22 },
-  { name: "Ria (São Roque)", pts: [V(-56, 2), V(-58, 18)], halfW: 18 },
-  { name: "Ria (Barra)", pts: [V(-58, 18), V(-72, 14)], halfW: 15 },
+  {
+    name: "Ria — canal de Ovar",
+    pts: [V3(-134.29, -39.7), V3(-160, -15)],
+    halfW: 20,
+    city: false,
+  },
+  {
+    name: "Ria — Costa Nova",
+    pts: [V3(-160, -15), V3(-165, 25)],
+    halfW: 14,
+    city: false,
+  },
+  {
+    name: "Ria — Barra",
+    pts: [V3(-160, -15), V3(-185, -25)],
+    halfW: 12,
+    city: false,
+  },
 ];
 
 // ---------------------------------------------------------------- graph
@@ -76,7 +134,6 @@ function pointAtEdge(e: Edge, s: number, out: THREE.Vector3) {
   return out.copy(e.pts[i]).lerp(e.pts[i + 1], (s - e.cum[i]) / segLen);
 }
 
-/** Polyline points from arc position s0 to s1 along an edge (either direction). */
 function slicePts(e: Edge, s0: number, s1: number): THREE.Vector3[] {
   const pts: THREE.Vector3[] = [pointAtEdge(e, s0, new THREE.Vector3())];
   if (s1 >= s0) {
@@ -130,15 +187,25 @@ const SEEDS: Array<Pick<PortDef, "id" | "label" | "caisName" | "accent">> = [
   { id: "contact", label: "Contact", caisName: "Farol da Barra", accent: "#ec4899" },
 ];
 
-function netPort(
+function anchoredPort(
   seed: (typeof SEEDS)[number],
-  rawX: number,
-  rawZ: number,
-  outX: number,
-  outZ: number
+  anchor: THREE.Vector3,
+  opts: {
+    sShift?: number;
+    flipOut?: boolean;
+    outTo?: THREE.Vector3;
+    landmarkDist?: number;
+    platformR?: number;
+  } = {}
 ): PortDef {
-  const point = V(rawX, rawZ);
-  const outward = new THREE.Vector3(outX, 0, outZ).normalize();
+  const loc = locate(anchor);
+  const edge = EDGES[loc.e];
+  const s = THREE.MathUtils.clamp(loc.s + (opts.sShift ?? 0), 4, edge.length - 4);
+  const point = pointAtEdge(edge, s, new THREE.Vector3());
+  const outward = (opts.outTo ?? anchor).clone().sub(point).setY(0);
+  if (outward.lengthSq() < 0.05) outward.set(0, 0, 1);
+  outward.normalize();
+  if (opts.flipOut) outward.negate();
   const tangent = new THREE.Vector3(-outward.z, 0, outward.x);
   return {
     ...seed,
@@ -147,28 +214,42 @@ function netPort(
     tangent,
     outward,
     dockPos: point.clone().addScaledVector(outward, 4.2),
-    landmarkPos: point.clone().addScaledVector(outward, 11.5),
+    landmarkPos: point.clone().addScaledVector(outward, opts.landmarkDist ?? 11.5),
     faceIn: Math.atan2(-outward.x, -outward.z),
+    platformR: opts.platformR,
   };
 }
 
+const A_PEIXE = poi(/Praça do Peixe/) ?? V3(-15.6, -22.4);
+const A_ARTENOVA = poi(/Museu Arte Nova/) ?? V3(-18.3, -16);
+const A_TRONCALHADA = poi(/Troncalhada/) ?? V3(-93.1, -46.6);
+const A_LAGO = poi(/Lago da Fonte Nova/) ?? V3(93.3, 23.3);
+const A_CAIS_FN = poi(/Cais da Fonte Nova/) ?? V3(101.3, 44.5);
+const A_CONGRESSO = poi(/Câmara Municipal.*Congressos/) ?? V3(103.8, 36.2);
+const A_HUMBERTO = poi(/Humberto Delgado/) ?? V3(1.6, -9.9);
+
 export const AVEIRO_PORTS: PortDef[] = [
-  netPort(SEEDS[0], -6.5, -15.5, -0.21, 0.98), // Beira-Mar island, on the Botirões
-  netPort(SEEDS[1], -11, 3.4, 0.34, 0.94), // Art Nouveau bank of Canal Central
-  netPort(SEEDS[2], -64, 30, -0.45, 0.89), // out in the ria, toward the coastal spit
-  netPort(SEEDS[3], -28, -21.5, -0.24, 0.97), // salinas south of São Roque
-  netPort(SEEDS[4], 47, -16.2, 0.164, 0.986), // south shore of Fonte Nova lake
-  netPort(SEEDS[5], -72, 14, -0.96, -0.27), // lagoon mouth, far west
+  anchoredPort(SEEDS[0], A_PEIXE, { platformR: 5.5, landmarkDist: 10 }),
+  // the Art Nouveau row faces the canal — landmark on the open south bank
+  anchoredPort(SEEDS[1], A_ARTENOVA, { flipOut: true, platformR: 5.5, landmarkDist: 10 }),
+  anchoredPort(SEEDS[2], V3(-165, 25), { outTo: V3(-172, 38) }),
+  anchoredPort(SEEDS[3], A_TRONCALHADA, { landmarkDist: 12 }),
+  anchoredPort(SEEDS[4], A_LAGO, { outTo: A_CAIS_FN, platformR: 6, landmarkDist: 14 }),
+  anchoredPort(SEEDS[5], V3(-185, -25), { outTo: V3(-196, -30) }),
 ];
 
-const PORT_LOCS = AVEIRO_PORTS.map((p) => locate(p.point));
-
+const startLoc = locate(A_HUMBERTO);
+const startS = Math.max(startLoc.s - 14, 6);
+const startPos = pointAtEdge(EDGES[startLoc.e], startS, new THREE.Vector3());
+const startAhead = pointAtEdge(EDGES[startLoc.e], startS + 2, new THREE.Vector3());
 export const AVEIRO_START = {
-  pos: V(18, -9),
-  heading: Math.atan2(6.8 - 30.6, -3.4 + 15.3), // facing down Canal Central, away from the Praça
+  pos: startPos,
+  heading: Math.atan2(startAhead.x - startPos.x, startAhead.z - startPos.z),
 };
 
 // ---------------------------------------------------------------- routing
+
+const PORT_LOCS = AVEIRO_PORTS.map((p) => locate(p.point));
 
 export function buildAveiroRoute(
   from: THREE.Vector3,
@@ -219,7 +300,6 @@ export function buildAveiroRoute(
     if (!isFinite(Math.min(viaA, viaB))) return null;
     const entry = viaA <= viaB ? eB.aKey : eB.bKey;
 
-    // walk the predecessor chain back to the start edge
     const chain: { node: string; e: number }[] = [];
     let cur = entry;
     for (;;) {
@@ -233,7 +313,9 @@ export function buildAveiroRoute(
     for (let i = chain.length - 1; i >= 0; i--) {
       const e = EDGES[chain[i].e];
       const arriveAtA = e.aKey === chain[i].node;
-      pts.push(...slicePts(e, arriveAtA ? e.length : 0, arriveAtA ? 0 : e.length).slice(1));
+      pts.push(
+        ...slicePts(e, arriveAtA ? e.length : 0, arriveAtA ? 0 : e.length).slice(1)
+      );
     }
     pts.push(...slicePts(eB, entry === eB.aKey ? 0 : eB.length, B.s).slice(1));
   }
@@ -250,16 +332,14 @@ export function buildAveiroRoute(
 
 // ---------------------------------------------------------------- constraint
 
-/** Marsh islets out in the ria — scenery and keep-out zones. */
 export const MARSH_ISLETS: Array<{ x: number; z: number; r: number }> = [
-  { x: -52 * S, z: 26 * S, r: 6 },
-  { x: -62 * S, z: 10 * S, r: 5 },
-  { x: -70 * S, z: 26 * S, r: 4.5 },
-  { x: -56 * S, z: 36 * S, r: 5 },
+  { x: -120, z: -12, r: 5 },
+  { x: -143, z: 8, r: 6 },
+  { x: -152, z: -50, r: 5 },
+  { x: -112, z: -40, r: 4 },
 ];
 
 const KEEPOUTS: Array<{ x: number; z: number; r: number }> = [
-  // outer half of each pier
   ...AVEIRO_PORTS.map((p) => {
     const c = p.point.clone().addScaledVector(p.outward, 3.2);
     return { x: c.x, z: c.z, r: 0.9 };
@@ -269,7 +349,6 @@ const KEEPOUTS: Array<{ x: number; z: number; r: number }> = [
 
 const BANK_MARGIN = 1.6;
 
-/** Keep the boat inside the canal network (and out of islets/piers). */
 export function constrainAveiro(pos: THREE.Vector3): boolean {
   let bestDepth = -Infinity;
   let cx = 0;
@@ -325,7 +404,7 @@ export function constrainAveiro(pos: THREE.Vector3): boolean {
   return hit;
 }
 
-// ---------------------------------------------------------------- scenery data
+// ---------------------------------------------------------------- scenery
 
 export interface BridgeDef {
   pos: [number, number, number];
@@ -334,26 +413,38 @@ export interface BridgeDef {
   span: number;
 }
 
-const bridge = (
-  rawX: number,
-  rawZ: number,
-  dirX: number,
-  dirZ: number,
-  r: number,
-  span: number
-): BridgeDef => ({ pos: P(rawX, rawZ), rotY: Math.atan2(dirX, dirZ), r, span });
+/** Real bridges from OSM POIs, snapped onto the canal centrelines. */
+export const AVEIRO_BRIDGES: BridgeDef[] = (
+  [
+    [/Humberto Delgado/, 14],
+    [/Ponte da Dobadoura/, 3.5],
+    [/Ponte de São João/, 3],
+    [/Ponte do Canal das Pirâmides/, 4],
+  ] as Array<[RegExp, number]>
+)
+  .map(([re, span]) => {
+    const a = poi(re);
+    if (!a) return null;
+    const loc = locate(a);
+    if (loc.d > 12) return null;
+    const e = EDGES[loc.e];
+    const s = THREE.MathUtils.clamp(loc.s, 9, e.length - 9);
+    const p = pointAtEdge(e, s, new THREE.Vector3());
+    const ahead = pointAtEdge(e, Math.min(s + 1.5, e.length), new THREE.Vector3());
+    return {
+      pos: [p.x, 0, p.z] as [number, number, number],
+      rotY: Math.atan2(ahead.x - p.x, ahead.z - p.z),
+      r: e.halfW + 0.9,
+      span,
+    };
+  })
+  .filter((b): b is BridgeDef => b !== null);
 
-export const AVEIRO_BRIDGES: BridgeDef[] = [
-  bridge(19, -9.4, 0.93, -0.37, 6.3, 12), // Ponte-Praça — the canal runs under the main square
-  bridge(33, -13, 0.97, -0.24, 5.3, 4), // Ponte do Cojo
-  bridge(-17, -20, -1, 0, 5.3, 2.6), // Ponte de Carcassonne
-  bridge(1.5, -6.5, -0.49, -0.87, 4.8, 2.8), // Ponte dos Botirões
-  bridge(-39, 8, 1, 0, 5.8, 4), // Ponte das Pirâmides
-];
+export const CONGRESS_POS: [number, number, number] = [A_CONGRESSO.x, 0.7, A_CONGRESSO.z];
+export const SALINAS_CENTER: [number, number] = [A_TRONCALHADA.x, A_TRONCALHADA.z];
 
-/** Ambience loop for the extra moliceiros, circling the open ria. */
 export const AVEIRO_AMBIENT = new THREE.CatmullRomCurve3(
-  [V(-50, 18), V(-58, 8), V(-66, 18), V(-58, 28)],
+  [V3(-122, -30), V3(-140, -48), V3(-158, -30), V3(-140, -12)],
   true,
   "centripetal"
 );

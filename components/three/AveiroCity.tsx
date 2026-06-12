@@ -2,46 +2,166 @@
 
 import { useMemo } from "react";
 import * as THREE from "three";
-import { AVEIRO_BRIDGES, AVEIRO_SCALE, MARSH_ISLETS, P } from "@/lib/aveiro";
+import {
+  AVEIRO_BRIDGES,
+  AVEIRO_PORTS,
+  CHANNELS,
+  CONGRESS_POS,
+  MARSH_ISLETS,
+  SALINAS_CENTER,
+  type Channel,
+} from "@/lib/aveiro";
+import { mulberry32 } from "@/lib/ports";
+import { getTexture } from "@/lib/textures";
 import { ArchBridge, Clouds, House, Tree } from "@/components/three/City";
-import { Facade, SaltPyramid, StripedHouse } from "@/components/three/Landmarks";
+import { SaltPyramid, StripedHouse } from "@/components/three/Landmarks";
 
-const S = AVEIRO_SCALE;
+const PASTELS = ["#f4d35e", "#ee6c4d", "#3d8ea9", "#e8a87c", "#9bc4bc", "#f2939b", "#d9b26f", "#f3e3c3"];
 
-/** Flat city block extruded from a polygon of raw map [x, z] coords. */
-function Quarter({
-  points,
-  color = "#ddd0ab",
-  h = 0.7,
-}: {
-  points: [number, number][];
-  color?: string;
-  h?: number;
-}) {
-  const geom = useMemo(() => {
-    // ensure CCW winding in shape space so the top cap faces up
-    let area = 0;
-    for (let i = 0; i < points.length; i++) {
-      const [x1, z1] = points[i];
-      const [x2, z2] = points[(i + 1) % points.length];
-      area += x1 * -z2 - x2 * -z1;
+/** Mitred per-vertex offset of a polyline (side > 0 = left of travel). */
+function offsetPolyline(pts: THREE.Vector3[], offset: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (let i = 0; i < pts.length; i++) {
+    const prev = pts[Math.max(0, i - 1)];
+    const next = pts[Math.min(pts.length - 1, i + 1)];
+    let dx = next.x - prev.x;
+    let dz = next.z - prev.z;
+    const len = Math.hypot(dx, dz) || 1e-6;
+    dx /= len;
+    dz /= len;
+    // left normal, mitre clamped so sharp corners don't explode
+    out.push([pts[i].x - dz * offset, pts[i].z + dx * offset]);
+  }
+  return out;
+}
+
+function polygonGeometry(points: Array<[number, number]>, h: number) {
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const [x1, z1] = points[i];
+    const [x2, z2] = points[(i + 1) % points.length];
+    area += x1 * -z2 - x2 * -z1;
+  }
+  const pts = area < 0 ? [...points].reverse() : points;
+  const shape = new THREE.Shape();
+  pts.forEach(([x, z], i) => {
+    if (i === 0) shape.moveTo(x, -z);
+    else shape.lineTo(x, -z);
+  });
+  shape.closePath();
+  const g = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
+  g.rotateX(-Math.PI / 2);
+  return g;
+}
+
+interface Slot {
+  x: number;
+  z: number;
+  rotY: number;
+}
+
+/** Quay strip along one bank of a canal, with building slots facing the water. */
+function useQuay(channel: Channel, side: 1 | -1) {
+  return useMemo(() => {
+    const inner = offsetPolyline(channel.pts, side * (channel.halfW + 0.4));
+    const outer = offsetPolyline(channel.pts, side * (channel.halfW + 5.2));
+    const geom = polygonGeometry([...inner, ...outer.reverse()], 0.7);
+
+    // building slots along the strip
+    const mid = offsetPolyline(channel.pts, side * (channel.halfW + 3.6));
+    const slots: Slot[] = [];
+    let acc = 0;
+    for (let i = 1; i < mid.length; i++) {
+      const [ax, az] = mid[i - 1];
+      const [bx, bz] = mid[i];
+      const segLen = Math.hypot(bx - ax, bz - az);
+      let t = (9 - acc) / segLen;
+      while (t < 1) {
+        const x = ax + (bx - ax) * t;
+        const z = az + (bz - az) * t;
+        // face the canal
+        const dirX = (bx - ax) / segLen;
+        const dirZ = (bz - az) / segLen;
+        const nx = side * dirZ;
+        const nz = -side * dirX;
+        slots.push({ x, z, rotY: Math.atan2(nx, nz) });
+        t += 9 / segLen;
+      }
+      acc = (acc + segLen) % 9;
     }
-    const pts = area < 0 ? [...points].reverse() : points;
-    const shape = new THREE.Shape();
-    pts.forEach(([x, z], i) => {
-      if (i === 0) shape.moveTo(x * S, -z * S);
-      else shape.lineTo(x * S, -z * S);
-    });
-    shape.closePath();
-    const g = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
-    g.rotateX(-Math.PI / 2);
-    return g;
-  }, [points, h]);
+    return { geom, slots };
+  }, [channel, side]);
+}
+
+const AVOID = [
+  ...AVEIRO_PORTS.flatMap((p) => [
+    { x: p.dockPos.x, z: p.dockPos.z, r: 13 },
+    { x: p.landmarkPos.x, z: p.landmarkPos.z, r: (p.platformR ?? 7) + 4 },
+  ]),
+  ...AVEIRO_BRIDGES.map((b) => ({ x: b.pos[0], z: b.pos[2], r: b.span / 2 + 7 })),
+];
+
+function clearOf(x: number, z: number) {
+  for (const a of AVOID) {
+    if (Math.hypot(x - a.x, z - a.z) < a.r) return false;
+  }
+  return true;
+}
+
+function QuaySide({
+  channel,
+  side,
+  seed,
+  buildings,
+}: {
+  channel: Channel;
+  side: 1 | -1;
+  seed: number;
+  buildings: "houses" | "warehouses" | "none";
+}) {
+  const { geom, slots } = useQuay(channel, side);
+
+  const placed = useMemo(() => {
+    const rnd = mulberry32(seed);
+    return slots
+      .filter((s) => clearOf(s.x, s.z))
+      .filter((s) => s.x > -60 || buildings === "warehouses") // west of town is salinas/marsh
+      .filter(() => rnd() > 0.25)
+      .map((s) => ({
+        ...s,
+        w: 1.5 + rnd() * 0.7,
+        h: 1.5 + rnd() * 1.3,
+        color: PASTELS[Math.floor(rnd() * PASTELS.length)],
+      }));
+  }, [slots, seed, buildings]);
 
   return (
-    <mesh geometry={geom} receiveShadow>
-      <meshStandardMaterial color={color} roughness={1} />
-    </mesh>
+    <group>
+      <mesh geometry={geom} receiveShadow>
+        <meshStandardMaterial
+          color="#d9cba6"
+          roughness={1}
+          map={getTexture("calcada", 0.24, 0.24)}
+        />
+      </mesh>
+      {buildings === "houses" &&
+        placed.map((s, i) => (
+          <House
+            key={i}
+            position={[s.x, 0.7, s.z]}
+            rotY={s.rotY}
+            w={s.w}
+            h={s.h}
+            color={s.color}
+          />
+        ))}
+      {buildings === "warehouses" &&
+        placed
+          .filter((_, i) => i % 2 === 0)
+          .map((s, i) => (
+            <Warehouse key={i} position={[s.x, 0.7, s.z]} rotY={s.rotY + Math.PI / 2} />
+          ))}
+    </group>
   );
 }
 
@@ -81,32 +201,41 @@ function Warehouse({
 /** Old ceramics factory — today's Centro de Congressos — with its brick chimney. */
 function CongressCenter({ position }: { position: [number, number, number] }) {
   return (
-    <group position={position} rotation-y={0.35}>
-      <mesh position-y={1.5} castShadow>
-        <boxGeometry args={[7, 3, 4]} />
-        <meshStandardMaterial color="#9e3d2c" roughness={0.95} />
+    <group position={position} rotation-y={2.4}>
+      <mesh position-y={0.34} receiveShadow>
+        <cylinderGeometry args={[8, 8.7, 0.68, 24]} />
+        <meshStandardMaterial color="#d9cba6" roughness={1} />
       </mesh>
-      <mesh position-y={3.08}>
-        <boxGeometry args={[7.2, 0.16, 4.2]} />
-        <meshStandardMaterial color="#f5f1e6" roughness={0.85} />
-      </mesh>
-      <mesh position={[2, 1.1, 2.05]}>
-        <boxGeometry args={[1.4, 1.8, 0.08]} />
-        <meshStandardMaterial color="#27434f" roughness={0.35} />
-      </mesh>
-      <mesh position={[-4.6, 4.5, 0]} castShadow>
-        <cylinderGeometry args={[0.55, 0.85, 9, 12]} />
-        <meshStandardMaterial color="#8f3525" roughness={1} />
-      </mesh>
-      <mesh position={[-4.6, 9.1, 0]}>
-        <cylinderGeometry args={[0.75, 0.6, 0.5, 12]} />
-        <meshStandardMaterial color="#7c2d1f" roughness={1} />
-      </mesh>
+      <group position-y={0.68}>
+        <mesh position-y={1.5} castShadow>
+          <boxGeometry args={[7, 3, 4]} />
+          <meshStandardMaterial
+            color="#9e3d2c"
+            roughness={0.95}
+            map={getTexture("brick", 4, 1.8)}
+          />
+        </mesh>
+        <mesh position-y={3.08}>
+          <boxGeometry args={[7.2, 0.16, 4.2]} />
+          <meshStandardMaterial color="#f5f1e6" roughness={0.85} />
+        </mesh>
+        <mesh position={[2, 1.1, 2.05]}>
+          <boxGeometry args={[1.4, 1.8, 0.08]} />
+          <meshStandardMaterial color="#27434f" roughness={0.35} />
+        </mesh>
+        <mesh position={[-4.6, 4.5, 0]} castShadow>
+          <cylinderGeometry args={[0.55, 0.85, 9, 12]} />
+          <meshStandardMaterial color="#8f3525" roughness={1} />
+        </mesh>
+        <mesh position={[-4.6, 9.1, 0]}>
+          <cylinderGeometry args={[0.75, 0.6, 0.5, 12]} />
+          <meshStandardMaterial color="#7c2d1f" roughness={1} />
+        </mesh>
+      </group>
     </group>
   );
 }
 
-/** Shallow salt pan with a dike rim and a small salt heap. */
 function SaltPan({
   position,
   w,
@@ -133,144 +262,34 @@ function SaltPan({
   );
 }
 
-const BEIRA_MAR_HOUSES: Array<{ p: [number, number]; rot: number; c: string }> = [
-  { p: [-15.5, -3], rot: 2.7, c: "#f4d35e" },
-  { p: [-12, -1.8], rot: 2.9, c: "#ee6c4d" },
-  { p: [-8.5, -3.2], rot: 3.3, c: "#3d8ea9" },
-  { p: [-5.5, -6], rot: -2.4, c: "#e8a87c" },
-  { p: [-12.5, -13], rot: -0.6, c: "#9bc4bc" },
-  { p: [-9.5, -10.5], rot: -0.9, c: "#f2939b" },
-  { p: [-15, -9], rot: 0.9, c: "#d9b26f" },
-];
-
-const PRACA_HOUSES: Array<{ p: [number, number]; rot: number; c: string }> = [
-  { p: [9, -9.5], rot: 2.0, c: "#f3e3c3" },
-  { p: [13, -11.5], rot: 2.0, c: "#eec4c4" },
-  { p: [17, -13.5], rot: 2.0, c: "#bcd8c1" },
-  { p: [12, -16], rot: -1.1, c: "#bcd2e8" },
-  { p: [18, -19], rot: 0.4, c: "#f4d35e" },
-  { p: [25, -19], rot: 1.8, c: "#e8a87c" },
-];
-
 export default function AveiroCity() {
+  const cityChannels = CHANNELS.filter((c) => c.city);
+  const [sx, sz] = SALINAS_CENTER;
+
   return (
     <>
-      {/* ----- city quarters (quay platforms) ----- */}
-      {/* Beira-Mar island, ringed by Central, Botirões and São Roque */}
-      <Quarter
-        points={[
-          [-14.5, 1.8],
-          [-1.3, -3.4],
-          [-10.8, -14.6],
-          [-15.5, -8],
-        ]}
-        color="#e3d4ac"
-      />
-      {/* Rossio / south bank of Canal Central */}
-      <Quarter
-        points={[
-          [-17, 10],
-          [-3, 5],
-          [3, 2.5],
-          [6, 9],
-          [-8, 16],
-          [-19, 15],
-        ]}
-      />
-      {/* Praça quarter, north of Canal Central */}
-      <Quarter
-        points={[
-          [6, -6],
-          [23, -13.5],
-          [30, -13],
-          [30, -26],
-          [4, -22],
-        ]}
-      />
-      {/* Cojo north bank, with the old factory */}
-      <Quarter
-        points={[
-          [26, -16],
-          [40, -19.5],
-          [44, -24],
-          [36, -30],
-          [24, -26],
-        ]}
-        color="#d8c9a2"
-      />
-      {/* Cojo south bank */}
-      <Quarter
-        points={[
-          [25, -6.5],
-          [41, -10.5],
-          [50, -9],
-          [50, 1],
-          [26, 1],
-        ]}
-      />
-      {/* Alboi, between Pirâmides and São Roque */}
-      <Quarter
-        points={[
-          [-30, 4],
-          [-22, 2],
-          [-21, -6],
-          [-29, -3],
-        ]}
-        color="#e3d4ac"
-      />
-      {/* São Roque north bank — the salt warehouses */}
-      <Quarter
-        points={[
-          [-13, -24.5],
-          [-44, -26.5],
-          [-46, -32],
-          [-13, -30],
-        ]}
-        color="#d8c9a2"
-      />
-
-      {/* ----- buildings ----- */}
-      {BEIRA_MAR_HOUSES.map((h, i) => (
-        <House key={i} position={P(h.p[0], h.p[1], 0.7)} rotY={h.rot} color={h.c} />
-      ))}
-      {PRACA_HOUSES.map((h, i) => (
-        <House
-          key={i}
-          position={P(h.p[0], h.p[1], 0.7)}
-          rotY={h.rot}
-          color={h.c}
-          h={1.9}
-        />
-      ))}
-      {/* extra Art Nouveau frontage on the Rossio quay */}
-      <group position={P(-5, 6.6, 0.7)} rotation-y={2.8}>
-        <Facade position={[-1.8, 0, 0]} w={1.7} h={3.5} color="#f3e3c3" />
-        <Facade position={[0, 0, 0]} w={1.6} h={4.1} color="#bcd2e8" />
-        <Facade position={[1.8, 0, 0]} w={1.7} h={3.3} color="#eec4c4" />
-      </group>
-      <CongressCenter position={P(36, -25, 0.7)} />
-      {[0, 1, 2, 3].map((i) => (
-        <Warehouse
-          key={i}
-          position={P(-18 - i * 6.5, -27.8, 0.7)}
-          rotY={Math.PI / 2 + 0.07}
-        />
+      {/* quays + buildings generated along the real canal centrelines */}
+      {cityChannels.map((c, i) => (
+        <group key={c.name ?? i}>
+          <QuaySide
+            channel={c}
+            side={1}
+            seed={i * 7 + 1}
+            buildings={/São Roque/i.test(c.name ?? "") ? "warehouses" : "houses"}
+          />
+          <QuaySide channel={c} side={-1} seed={i * 7 + 4} buildings="houses" />
+        </group>
       ))}
 
-      {/* trees on the squares */}
-      <Tree position={P(-12, 13, 0.7)} s={1.1} />
-      <Tree position={P(-16, 12, 0.7)} s={0.9} />
-      <Tree position={P(8, -20, 0.7)} s={1.0} />
-      <Tree position={P(28, -23, 0.7)} s={0.9} />
-      <Tree position={P(-25, 0, 0.7)} s={0.9} />
+      {/* salinas around the Marinha da Troncalhada */}
+      <SaltPan position={[sx - 4, 0, sz - 10]} w={11} d={7} />
+      <SaltPan position={[sx + 9, 0, sz - 4]} w={9} d={6} />
+      <SaltPan position={[sx - 13, 0, sz + 1]} w={8} d={5.5} heap={false} />
+      <SaltPan position={[sx + 3, 0, sz - 18]} w={7} d={4.5} />
 
-      {/* ----- salinas south of São Roque ----- */}
-      <SaltPan position={P(-34, -14)} w={11} d={7} />
-      <SaltPan position={P(-42, -10)} w={9} d={6} />
-      <SaltPan position={P(-30, -7)} w={8} d={5.5} heap={false} />
-      <SaltPan position={P(-40, -17.5)} w={7} d={4.5} />
+      <CongressCenter position={CONGRESS_POS} />
 
-      {/* ----- the open ria ----- */}
+      {/* the open ria */}
       {MARSH_ISLETS.map((m, i) => (
         <group key={i} position={[m.x, 0, m.z]}>
           <mesh position-y={0.16} receiveShadow>
@@ -280,15 +299,15 @@ export default function AveiroCity() {
           {i % 2 === 0 && <Tree position={[m.r * 0.3, 0.32, 0]} s={0.7} />}
         </group>
       ))}
-      {/* dunes and a couple more palheiros near Costa Nova */}
-      <mesh position={P(-68, 36, 0.2)} rotation-y={0.5} receiveShadow>
-        <boxGeometry args={[16, 0.5, 6]} />
+
+      {/* dunes and extra palheiros near Costa Nova */}
+      <mesh position={[-172, 0.2, 33]} rotation-y={0.4} receiveShadow>
+        <boxGeometry args={[18, 0.5, 7]} />
         <meshStandardMaterial color="#ecdfbe" roughness={1} />
       </mesh>
-      <StripedHouse position={P(-66, 34.5, 0.45)} color="#d6452e" stripes={5} />
-      <StripedHouse position={P(-70.5, 37, 0.45)} color="#2e8b57" stripes={5} />
+      <StripedHouse position={[-169, 0.45, 31]} color="#d6452e" stripes={5} />
+      <StripedHouse position={[-175, 0.45, 35.5]} color="#2e8b57" stripes={5} />
 
-      {/* ----- bridges ----- */}
       {AVEIRO_BRIDGES.map((b, i) => (
         <ArchBridge key={i} position={b.pos} rotY={b.rotY} r={b.r} span={b.span} />
       ))}
