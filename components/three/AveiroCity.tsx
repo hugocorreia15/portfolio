@@ -270,7 +270,7 @@ export default function AveiroCity() {
     <>
       {/* quays + buildings generated along the real canal centrelines */}
       {cityChannels.map((c, i) => (
-        <group key={c.name ?? i}>
+        <group key={`${c.name ?? "canal"}-${i}`}>
           <QuaySide
             channel={c}
             side={1}
