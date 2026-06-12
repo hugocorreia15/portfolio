@@ -12,7 +12,8 @@ export type TextureKind =
   | "brick"
   | "wood"
   | "calcada"
-  | "sand";
+  | "sand"
+  | "foam";
 
 const cache = new Map<string, THREE.Texture>();
 
@@ -23,6 +24,16 @@ function hash(x: number, y: number, seed: number) {
 }
 
 function draw(kind: TextureKind, ctx: CanvasRenderingContext2D, s: number) {
+  if (kind === "foam") {
+    // soft foam puff for the boat's wake (additive sprite, not tiled)
+    const g = ctx.createRadialGradient(s / 2, s / 2, s * 0.05, s / 2, s / 2, s * 0.5);
+    g.addColorStop(0, "rgba(255,255,255,0.95)");
+    g.addColorStop(0.55, "rgba(255,255,255,0.35)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, s, s);
+    return;
+  }
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, s, s);
 

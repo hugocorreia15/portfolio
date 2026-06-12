@@ -9,8 +9,8 @@ import type { MapDef } from "@/lib/maps";
 import { getTexture } from "@/lib/textures";
 
 const GLB_URL = "/models/moliceiro.glb";
-/** Tweak these if you drop in the Sketchfab model and it sits oddly. */
-const GLB_TUNE = { length: 6.2, lift: 0.32, extraRotY: 0 };
+/** Tweak these if the Sketchfab model sits oddly (flip extraRotY to Math.PI if it sails backwards). */
+const GLB_TUNE = { length: 7.2, lift: 0.32, extraRotY: 0 };
 
 const MAX_SPEED = 9.5;
 const MAX_REVERSE = -3.4;
@@ -23,6 +23,14 @@ const _desired = new THREE.Vector3();
 const _lookAt = new THREE.Vector3();
 const _normal = new THREE.Vector3();
 const _scan = new THREE.Vector3();
+const _wakeMat = new THREE.Matrix4();
+const _wakeQuat = new THREE.Quaternion();
+const _wakeV = new THREE.Vector3();
+const _wakeS = new THREE.Vector3();
+const _wakeCol = new THREE.Color();
+
+const WAKE_COUNT = 64;
+const WAKE_LIFE = 1.8;
 
 const MOVE_CODES = new Set([
   "KeyW",
@@ -218,6 +226,32 @@ export default function Moliceiro({
     length: number;
     s: number;
   } | null>(null);
+
+  // wake foam particles (ring buffer; age >= WAKE_LIFE means free slot)
+  const wakeMesh = useRef<THREE.InstancedMesh>(null);
+  const wake = useRef<{
+    parts: Array<{ x: number; z: number; vx: number; vz: number; age: number }>;
+    next: number;
+    timer: number;
+  } | null>(null);
+  if (wake.current == null) {
+    wake.current = {
+      parts: Array.from({ length: WAKE_COUNT }, () => ({
+        x: 0,
+        z: 0,
+        vx: 0,
+        vz: 0,
+        age: WAKE_LIFE,
+      })),
+      next: 0,
+      timer: 0,
+    };
+  }
+  const wakeGeom = useMemo(() => {
+    const g = new THREE.PlaneGeometry(1, 1);
+    g.rotateX(-Math.PI / 2);
+    return g;
+  }, []);
   const arrived = useRef(false);
   const engagedTarget = useRef<number | null>(0);
   const wasManual = useRef(false);
@@ -459,6 +493,63 @@ export default function Moliceiro({
       group.current.rotation.x = Math.sin(time * 1.4 + 1) * 0.02;
     }
 
+    // wake foam: prop wash astern + bow waves drifting out into a V
+    const wk = wake.current!;
+    const wm = wakeMesh.current;
+    if (wm) {
+      const spd = Math.abs(ph.speed);
+      wk.timer -= dt;
+      if (spd > 1.2 && wk.timer <= 0) {
+        wk.timer = THREE.MathUtils.clamp(0.8 / spd, 0.12, 0.4);
+        const fx = Math.sin(ph.heading);
+        const fz = Math.cos(ph.heading);
+        const sx = fz;
+        const sz = -fx;
+        const emit = (px: number, pz: number, vx: number, vz: number) => {
+          const p = wk.parts[wk.next];
+          wk.next = (wk.next + 1) % WAKE_COUNT;
+          p.x = px + (Math.random() - 0.5) * 0.35;
+          p.z = pz + (Math.random() - 0.5) * 0.35;
+          p.vx = vx;
+          p.vz = vz;
+          p.age = 0;
+        };
+        const drift = 0.55 + spd * 0.07;
+        emit(ph.pos.x - fx * 2.4, ph.pos.z - fz * 2.4, -fx * 0.5, -fz * 0.5);
+        emit(
+          ph.pos.x + fx * 2.0 + sx * 1.1,
+          ph.pos.z + fz * 2.0 + sz * 1.1,
+          sx * drift,
+          sz * drift
+        );
+        emit(
+          ph.pos.x + fx * 2.0 - sx * 1.1,
+          ph.pos.z + fz * 2.0 - sz * 1.1,
+          -sx * drift,
+          -sz * drift
+        );
+      }
+      for (let i = 0; i < WAKE_COUNT; i++) {
+        const p = wk.parts[i];
+        if (p.age < WAKE_LIFE) {
+          p.age += dt;
+          p.x += p.vx * dt;
+          p.z += p.vz * dt;
+        }
+        const t = Math.min(p.age / WAKE_LIFE, 1);
+        const scale = t >= 1 ? 0 : 0.35 + t * 1.6;
+        _wakeMat.compose(
+          _wakeV.set(p.x, 0.3, p.z),
+          _wakeQuat,
+          _wakeS.setScalar(scale)
+        );
+        wm.setMatrixAt(i, _wakeMat);
+        wm.setColorAt(i, _wakeCol.setScalar(t >= 1 ? 0 : (1 - t) * (1 - t) * 0.32));
+      }
+      wm.instanceMatrix.needsUpdate = true;
+      if (wm.instanceColor) wm.instanceColor.needsUpdate = true;
+    }
+
     // camera: pier framing when docked, otherwise an orbitable chase cam
     const c = cam.current;
     if (dockedIndex !== null) {
@@ -504,15 +595,30 @@ export default function Moliceiro({
   });
 
   return (
-    <group ref={group}>
-      {hasGlb ? (
-        <Suspense fallback={<ProceduralMoliceiro />}>
-          <GlbMoliceiro />
-        </Suspense>
-      ) : (
-        <ProceduralMoliceiro />
-      )}
-    </group>
+    <>
+      <group ref={group}>
+        {hasGlb ? (
+          <Suspense fallback={<ProceduralMoliceiro />}>
+            <GlbMoliceiro />
+          </Suspense>
+        ) : (
+          <ProceduralMoliceiro />
+        )}
+      </group>
+      <instancedMesh
+        ref={wakeMesh}
+        args={[undefined, undefined, WAKE_COUNT]}
+        frustumCulled={false}
+      >
+        <primitive object={wakeGeom} attach="geometry" />
+        <meshBasicMaterial
+          map={getTexture("foam")}
+          transparent
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </instancedMesh>
+    </>
   );
 }
 
