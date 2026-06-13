@@ -12,6 +12,7 @@ import AveiroCity from "@/components/three/AveiroCity";
 import Landmark from "@/components/three/Landmarks";
 import PortDock from "@/components/three/PortDock";
 import Moliceiro, { AmbientBoats } from "@/components/three/Moliceiro";
+import PlacedModels from "@/components/three/PlacedModel";
 
 /** The visible sun: a bright disc and a soft additive glow, immune to fog. */
 function SunDisc() {
@@ -96,6 +97,7 @@ export default function Scene({
 
       <Water />
       {map.id === "island" ? <City /> : <AveiroCity />}
+      <PlacedModels map={map.id} />
       {map.ports.map((port, i) => (
         <group key={port.id}>
           <Landmark port={port} />

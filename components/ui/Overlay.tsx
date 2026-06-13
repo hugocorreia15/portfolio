@@ -1,9 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { MAPS, type MapDef, type MapId } from "@/lib/maps";
 import { profile, type SectionId } from "@/data/profile";
-import { SKETCHFAB_GALLERY, type SketchfabModel } from "@/data/sketchfab";
 
 function Chips({ items }: { items: string[] }) {
   return (
@@ -232,72 +230,6 @@ function ContactContent() {
   );
 }
 
-/** Sketchfab viewer, mounted only when tapped so panels stay light. */
-function SketchfabEmbed({ model }: { model: SketchfabModel }) {
-  const [active, setActive] = useState(false);
-  return (
-    <figure className="space-y-1.5">
-      {active ? (
-        <iframe
-          title={model.title}
-          src={`${model.embed}?autostart=1`}
-          className="aspect-video w-full rounded-xl border border-ink/10"
-          allow="autoplay; fullscreen; xr-spatial-tracking"
-          allowFullScreen
-        />
-      ) : (
-        <button
-          onClick={() => setActive(true)}
-          className="group grid aspect-video w-full place-items-center rounded-xl border border-ink/10 bg-gradient-to-br from-azulejo/15 via-foam to-azulejo/25 transition-colors hover:border-azulejo/40"
-        >
-          <span className="grid size-12 place-items-center rounded-full bg-azulejo text-xl text-salt shadow-lg transition-transform group-hover:scale-110">
-            ▶
-          </span>
-          <span className="px-4 text-center text-sm font-medium text-ink/75">
-            {model.title}
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-wider text-ink/40">
-            tap to load the 3D capture
-          </span>
-        </button>
-      )}
-      <figcaption className="font-mono text-[10px] text-ink/45">
-        <a
-          href={model.href}
-          target="_blank"
-          rel="noreferrer"
-          className="underline-offset-2 hover:text-azulejo hover:underline"
-        >
-          {model.title}
-        </a>{" "}
-        by{" "}
-        <a
-          href={model.authorHref}
-          target="_blank"
-          rel="noreferrer"
-          className="underline-offset-2 hover:text-azulejo hover:underline"
-        >
-          {model.author}
-        </a>{" "}
-        on Sketchfab
-      </figcaption>
-    </figure>
-  );
-}
-
-function Gallery({ id }: { id: SectionId }) {
-  const models = SKETCHFAB_GALLERY[id];
-  if (!models?.length) return null;
-  return (
-    <div className="space-y-3 border-t border-ink/10 pt-4">
-      <SectionHeading>Galeria 3D — the real Aveiro</SectionHeading>
-      {models.map((m) => (
-        <SketchfabEmbed key={m.embed} model={m} />
-      ))}
-    </div>
-  );
-}
-
 const SECTION_CONTENT: Record<SectionId, () => React.ReactNode> = {
   about: AboutContent,
   experience: ExperienceContent,
@@ -394,7 +326,7 @@ export default function Overlay({
         40.6405° N, 8.6538° W — RIA DE AVEIRO
       </p>
 
-      {/* model credit (required if the Sketchfab GLB is used) */}
+      {/* model credits (CC-BY attribution — full table in the README) */}
       <p className="pointer-events-auto absolute bottom-5 right-5 hidden font-mono text-[10px] text-ink/40 md:block">
         moliceiro:{" "}
         <a
@@ -405,7 +337,15 @@ export default function Overlay({
         >
           André Bernardo
         </a>{" "}
-        · Sketchfab
+        ·{" "}
+        <a
+          href="https://github.com/hugocorreia15/portfolio#optional-scenery-models-3d-credits"
+          target="_blank"
+          rel="noreferrer"
+          className="underline-offset-2 hover:text-azulejo hover:underline"
+        >
+          3D credits ↗
+        </a>
       </p>
 
       {/* sailing toast */}
@@ -496,7 +436,6 @@ export default function Overlay({
           </header>
           <div className="panel-body panel-scroll max-h-[calc(56vh-92px)] space-y-5 overflow-y-auto px-5 py-5 md:max-h-[calc(100vh-12rem-92px)]">
             <Content />
-            <Gallery id={docked.id} />
           </div>
         </aside>
       )}

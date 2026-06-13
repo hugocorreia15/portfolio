@@ -78,6 +78,27 @@ The boat is procedural by default. To swap in the Sketchfab model
 The attribution line required by CC-BY is already rendered in the bottom-right
 corner of the page.
 
+## Optional scenery models (3D credits)
+
+Sketchfab embeds are sealed viewers — they can't be placed inside the scene.
+To stand these models in the world, download each (Sketchfab login →
+**Download 3D Model** → glTF `.glb`, if the author enabled downloads) and save
+with the exact filename below in `public/models/`. Missing files are skipped
+silently; downloaded ones appear on next reload.
+
+| File | Model · author | Where it appears |
+| --- | --- | --- |
+| `moliceiro.glb` | [Moliceiro Aveiro](https://sketchfab.com/3d-models/moliceiro-aveiro-6661978e2edb4749addeb41c2ffaedec) · André Bernardo | the boats (✓ installed) |
+| `igreja-barrocas.glb` | [Igreja das Barrocas](https://sketchfab.com/3d-models/igreja-das-barrocas-aveiro-3813b360676244ac89879f6b922e1df4) · ricardo.turmas | Aveiro map, north of São Roque |
+| `ponte-carcavelos.glb` | [Ponte de Carcavelos](https://sketchfab.com/3d-models/ponte-de-carcavelos-aveiro-4a504e3b7df541f0a2f489aed2b7d63c) · ricardo.turmas | Aveiro map, Carcavelos esteiro |
+| `costa-nova-haystacks.glb` | [Costa Nova Haystacks](https://sketchfab.com/3d-models/costa-nova-haystacks-b89822f23b434dc0a2827e8624fd56c3) · rawkusperhaps | Costa Nova dune (both maps) |
+| `t17.glb` | [T17 3D Regional](https://sketchfab.com/3d-models/t17-3d-regional-3c36a1bd11134c46b8a651cb6c1ec5f3) · ANPRI | Aveiro map, by the Fonte Nova lake |
+| `igreja-trofa.glb` | [Igreja da Trofa](https://sketchfab.com/3d-models/igreja-da-trofa-jacinta-c9a65f6a206344cd8c51461ca7a260c1) · ricardo.turmas | island map, replaces the chapel |
+
+Most Sketchfab models are CC-BY: keep this table (linked from the page footer)
+up to date as the visible attribution. Placements/sizes live in
+`lib/placedModels.ts`.
+
 ## Content
 
 All CV content lives in `data/profile.ts`; the route/ports layout in

@@ -5,6 +5,8 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { BRIDGE_TS, CANAL, mulberry32 } from "@/lib/ports";
 import { getSurface, getTexture } from "@/lib/textures";
+import { TROFA_CHURCH } from "@/lib/placedModels";
+import { OptionalGlb } from "@/components/three/PlacedModel";
 
 const PASTELS = ["#f4d35e", "#ee6c4d", "#3d8ea9", "#e8a87c", "#9bc4bc", "#f2939b", "#d9b26f"];
 
@@ -186,9 +188,17 @@ function MainIsland() {
         <cylinderGeometry args={[13.6, 13.6, 0.1, 48]} />
         <meshStandardMaterial color="#e3d8c0" {...getSurface("calcada", 8, 8)} />
       </mesh>
-      <group position-y={0.74}>
-        <Chapel />
-      </group>
+      {/* the real Igreja da Trofa swaps in for the chapel when downloaded */}
+      <OptionalGlb
+        url={`/models/${TROFA_CHURCH.file}`}
+        position={[0, 0.74, 0]}
+        rotY={0.4}
+        size={TROFA_CHURCH.size}
+      >
+        <group position-y={0.74}>
+          <Chapel />
+        </group>
+      </OptionalGlb>
       {houses.map((h, i) => (
         <House key={i} {...h} />
       ))}
