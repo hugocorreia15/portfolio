@@ -13,7 +13,10 @@ export type TextureKind =
   | "wood"
   | "calcada"
   | "sand"
-  | "foam";
+  | "foam"
+  | "foliage";
+
+THREE.Cache.enabled = true;
 
 const cache = new Map<string, THREE.Texture>();
 
@@ -120,6 +123,22 @@ function draw(kind: TextureKind, ctx: CanvasRenderingContext2D, s: number) {
         ctx.stroke();
       }
     }
+  } else if (kind === "foliage") {
+    // mottled leaf clumps — luminance only, tinted by the material colour
+    ctx.fillStyle = "#d8d8d8";
+    ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < 360; i++) {
+      const x = hash(i, 1, 71) * s;
+      const y = hash(i, 2, 73) * s;
+      const r = 4 + hash(i, 3, 79) * 14;
+      const light = hash(i, 4, 83) > 0.5;
+      ctx.fillStyle = light
+        ? `rgba(255,255,255,${(0.10 + hash(i, 5, 89) * 0.2).toFixed(3)})`
+        : `rgba(20,30,15,${(0.10 + hash(i, 6, 97) * 0.22).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.ellipse(x, y, r, r * 0.6, hash(i, 7, 101) * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
   } else if (kind === "calcada") {
     const n = 18;
     const cs = s / n;
@@ -161,4 +180,102 @@ export function getTexture(kind: TextureKind, rx = 1, ry = 1): THREE.Texture {
   clone.needsUpdate = true;
   cache.set(key, clone);
   return clone;
+}
+
+// ---------------------------------------------------------------------------
+// Image-based PBR surfaces — CC0 packs from ambientCG in /public/textures,
+// flattened to <slot>_color.jpg / <slot>_normal.jpg / <slot>_rough.jpg.
+// Procedural canvases above remain the fallback for kinds without files.
+// ---------------------------------------------------------------------------
+
+const IMAGE_SLOTS: Partial<Record<TextureKind, string>> = {
+  plaster: "plaster",
+  roofTiles: "roof",
+  brick: "brick",
+  wood: "wood",
+  calcada: "calcada",
+};
+
+export interface SurfaceMaps {
+  map: THREE.Texture;
+  normalMap?: THREE.Texture;
+  roughnessMap?: THREE.Texture;
+}
+
+const imgCache = new Map<string, THREE.Texture>();
+const loader = new THREE.TextureLoader();
+
+function loadImage(url: string, srgb: boolean, rx: number, ry: number) {
+  const key = `${url}:${rx}:${ry}`;
+  let t = imgCache.get(key);
+  if (!t) {
+    t = loader.load(url);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(rx, ry);
+    t.anisotropy = 8;
+    t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    imgCache.set(key, t);
+  }
+  return t;
+}
+
+/** Full PBR maps for a surface; falls back to the procedural canvas. */
+export function getSurface(kind: TextureKind, rx = 1, ry = 1): SurfaceMaps {
+  const slot = IMAGE_SLOTS[kind];
+  if (!slot) return { map: getTexture(kind, rx, ry) };
+  return {
+    map: loadImage(`/textures/${slot}_color.jpg`, true, rx, ry),
+    normalMap: loadImage(`/textures/${slot}_normal.jpg`, false, rx, ry),
+    roughnessMap: loadImage(`/textures/${slot}_rough.jpg`, false, rx, ry),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tileable water ripple normal map, generated from periodic value noise.
+// ---------------------------------------------------------------------------
+
+let ripples: THREE.DataTexture | null = null;
+
+export function getWaterRipples(): THREE.DataTexture {
+  if (ripples) return ripples;
+  const s = 256;
+  const h = new Float32Array(s * s);
+  for (let o = 0; o < 3; o++) {
+    const cells = 8 << o;
+    const px = s / cells;
+    const amp = 1 / (1 << o);
+    for (let y = 0; y < s; y++) {
+      for (let x = 0; x < s; x++) {
+        const cx = Math.floor(x / px);
+        const cy = Math.floor(y / px);
+        let fx = (x % px) / px;
+        let fy = (y % px) / px;
+        fx = fx * fx * (3 - 2 * fx);
+        fy = fy * fy * (3 - 2 * fy);
+        const v = (ix: number, iy: number) =>
+          hash(((ix % cells) + cells) % cells, ((iy % cells) + cells) % cells, 131 + o * 7);
+        const top = v(cx, cy) * (1 - fx) + v(cx + 1, cy) * fx;
+        const bot = v(cx, cy + 1) * (1 - fx) + v(cx + 1, cy + 1) * fx;
+        h[y * s + x] += (top * (1 - fy) + bot * fy) * amp;
+      }
+    }
+  }
+  const data = new Uint8Array(s * s * 4);
+  const strength = 2.4;
+  for (let y = 0; y < s; y++) {
+    for (let x = 0; x < s; x++) {
+      const dx = h[y * s + ((x + 1) % s)] - h[y * s + ((x - 1 + s) % s)];
+      const dy = h[((y + 1) % s) * s + x] - h[((y - 1 + s) % s) * s + x];
+      const inv = 1 / Math.hypot(dx * strength, dy * strength, 1);
+      const i = (y * s + x) * 4;
+      data[i] = (-dx * strength * inv * 0.5 + 0.5) * 255;
+      data[i + 1] = (-dy * strength * inv * 0.5 + 0.5) * 255;
+      data[i + 2] = (inv * 0.5 + 0.5) * 255;
+      data[i + 3] = 255;
+    }
+  }
+  ripples = new THREE.DataTexture(data, s, s, THREE.RGBAFormat);
+  ripples.wrapS = ripples.wrapT = THREE.RepeatWrapping;
+  ripples.needsUpdate = true;
+  return ripples;
 }

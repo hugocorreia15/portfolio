@@ -12,7 +12,7 @@ import {
   type Channel,
 } from "@/lib/aveiro";
 import { mulberry32 } from "@/lib/ports";
-import { getTexture } from "@/lib/textures";
+import { getSurface } from "@/lib/textures";
 import { ArchBridge, Clouds, House, Tree } from "@/components/three/City";
 import { SaltPyramid, StripedHouse } from "@/components/three/Landmarks";
 
@@ -138,13 +138,7 @@ function QuaySide({
   return (
     <group>
       <mesh geometry={geom} receiveShadow>
-        <meshStandardMaterial
-          color="#d9cba6"
-          roughness={1}
-          map={getTexture("calcada", 0.24, 0.24)}
-          bumpMap={getTexture("calcada", 0.24, 0.24)}
-          bumpScale={0.06}
-        />
+        <meshStandardMaterial color="#e8e0cf" {...getSurface("calcada", 0.18, 0.18)} />
       </mesh>
       {buildings === "houses" &&
         placed.map((s, i) => (
@@ -187,14 +181,14 @@ function Warehouse({
     <group position={position} rotation-y={rotY}>
       <mesh position-y={0.9} castShadow>
         <boxGeometry args={[3.4, 1.8, 6]} />
-        <meshStandardMaterial color="#f4efe2" roughness={0.95} />
+        <meshStandardMaterial color="#f4efe2" {...getSurface("plaster", 2.4, 1)} />
       </mesh>
       <mesh geometry={roof} position={[0, 1.8, -3.2]} castShadow>
-        <meshStandardMaterial color="#5b4634" roughness={1} flatShading />
+        <meshStandardMaterial color="#8d7355" {...getSurface("wood", 0.6, 0.6)} />
       </mesh>
       <mesh position={[0, 0.7, 3.02]}>
         <boxGeometry args={[1.3, 1.4, 0.07]} />
-        <meshStandardMaterial color="#3c2e20" />
+        <meshStandardMaterial color="#9a8068" {...getSurface("wood", 0.5, 0.6)} />
       </mesh>
     </group>
   );
@@ -211,11 +205,7 @@ function CongressCenter({ position }: { position: [number, number, number] }) {
       <group position-y={0.68}>
         <mesh position-y={1.5} castShadow>
           <boxGeometry args={[7, 3, 4]} />
-          <meshStandardMaterial
-            color="#9e3d2c"
-            roughness={0.95}
-            map={getTexture("brick", 4, 1.8)}
-          />
+          <meshStandardMaterial color="#ffffff" {...getSurface("brick", 4, 1.8)} />
         </mesh>
         <mesh position-y={3.08}>
           <boxGeometry args={[7.2, 0.16, 4.2]} />

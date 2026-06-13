@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import * as THREE from "three";
 import type { PortDef } from "@/lib/ports";
 import { House, Tree } from "@/components/three/City";
-import { getTexture } from "@/lib/textures";
+import { getSurface, getTexture } from "@/lib/textures";
 
 /** Triangle prism roof with the ridge running along z — the Costa Nova gable. */
 function useGableGeometry(w: number, h: number, d: number) {
@@ -41,7 +41,7 @@ export function StripedHouse({
         </mesh>
       ))}
       <mesh geometry={roof} position-y={1.88} castShadow>
-        <meshStandardMaterial color="#7a4a3a" roughness={0.95} flatShading />
+        <meshStandardMaterial color="#d9c0ae" {...getSurface("roofTiles", 0.6, 0.6)} />
       </mesh>
       <mesh position={[0, 0.62, 0.81]}>
         <boxGeometry args={[0.4, 1.1, 0.07]} />
@@ -80,11 +80,7 @@ export function Facade({
     <group position={position}>
       <mesh position-y={h / 2} castShadow>
         <boxGeometry args={[w, h, 0.8]} />
-        <meshStandardMaterial
-          color={color}
-          roughness={0.9}
-          map={getTexture("plaster", 1.6, 3)}
-        />
+        <meshStandardMaterial color={color} {...getSurface("plaster", 1.2, 2.2)} />
       </mesh>
       {/* art nouveau cornice */}
       <mesh position-y={h + 0.08} castShadow>
@@ -163,7 +159,7 @@ function Lighthouse() {
         <coneGeometry args={[0.56, 0.5, 10]} />
         <meshStandardMaterial color="#d63426" roughness={0.8} />
       </mesh>
-      <House position={[2.4, 0, 0.6]} rotY={-0.6} w={1.3} h={1.1} color="#f5f1e6" roof="#d63426" />
+      <House position={[2.4, 0, 0.6]} rotY={-0.6} w={1.3} h={1.1} color="#f5f1e6" roof="#e09a86" />
     </group>
   );
 }
@@ -173,11 +169,7 @@ function University() {
     <group>
       <mesh position={[-1, 0.95, 0]} castShadow>
         <boxGeometry args={[3.4, 1.9, 1.8]} />
-        <meshStandardMaterial
-          color="#a8402f"
-          roughness={0.95}
-          map={getTexture("brick", 2.4, 1.4)}
-        />
+        <meshStandardMaterial color="#ffffff" {...getSurface("brick", 2.2, 1.2)} />
       </mesh>
       <mesh position={[-1, 1.97, 0]}>
         <boxGeometry args={[3.5, 0.14, 1.9]} />
@@ -185,11 +177,7 @@ function University() {
       </mesh>
       <mesh position={[1.7, 1.4, -0.2]} castShadow>
         <boxGeometry args={[1.9, 2.8, 1.5]} />
-        <meshStandardMaterial
-          color="#b04a36"
-          roughness={0.95}
-          map={getTexture("brick", 1.4, 2)}
-        />
+        <meshStandardMaterial color="#ffffff" {...getSurface("brick", 1.3, 1.9)} />
       </mesh>
       <mesh position={[1.7, 2.87, -0.2]}>
         <boxGeometry args={[2.0, 0.14, 1.6]} />
@@ -219,7 +207,7 @@ function LandmarkContent({ id }: { id: PortDef["id"] }) {
       return (
         <group>
           <House position={[-1.9, 0, -0.4]} w={1.8} h={2.0} color="#f4d35e" />
-          <House position={[0.2, 0, -1.2]} w={1.6} h={1.6} color="#3d8ea9" roof="#8a4030" />
+          <House position={[0.2, 0, -1.2]} w={1.6} h={1.6} color="#3d8ea9" roof="#d9b5a5" />
           <House position={[2.2, 0, -0.3]} w={1.7} h={2.3} color="#ee6c4d" />
           <Tree position={[3.9, 0, 1.2]} />
           <Tree position={[-3.8, 0, 0.9]} s={0.85} />
@@ -277,11 +265,11 @@ export default function Landmark({ port }: { port: PortDef }) {
     >
       <mesh position-y={0.32} receiveShadow>
         <cylinderGeometry args={[r, r + 0.7, 0.64, 32]} />
-        <meshStandardMaterial
-          color={isSalinas ? "#ecdfbe" : "#e2cf9f"}
-          roughness={1}
-          map={getTexture(isSalinas ? "sand" : "calcada", 5, 5)}
-        />
+        {isSalinas ? (
+          <meshStandardMaterial color="#ecdfbe" roughness={1} map={getTexture("sand", 5, 5)} />
+        ) : (
+          <meshStandardMaterial color="#e9e1d0" {...getSurface("calcada", 4, 4)} />
+        )}
       </mesh>
       <group position-y={0.64} scale={contentScale}>
         <LandmarkContent id={port.id} />

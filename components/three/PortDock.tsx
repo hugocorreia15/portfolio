@@ -2,7 +2,7 @@
 
 import { Html } from "@react-three/drei";
 import type { PortDef } from "@/lib/ports";
-import { getTexture } from "@/lib/textures";
+import { getSurface } from "@/lib/textures";
 
 const POST_POSITIONS: Array<[number, number]> = [
   [-0.72, 0.55],
@@ -30,11 +30,7 @@ export default function PortDock({
         {/* pier deck reaching from the landmark island to the canal */}
         <mesh position={[0, 0.55, 2.4]} castShadow>
           <boxGeometry args={[1.7, 0.14, 4.4]} />
-          <meshStandardMaterial
-            color="#8a6a47"
-            roughness={0.95}
-            map={getTexture("wood", 1.4, 3)}
-          />
+          <meshStandardMaterial color="#cbb393" {...getSurface("wood", 0.8, 2)} />
         </mesh>
         {POST_POSITIONS.map(([x, z]) => (
           <mesh key={`${x}:${z}`} position={[x, 0.18, z]}>

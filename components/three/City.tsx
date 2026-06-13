@@ -4,7 +4,7 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { BRIDGE_TS, CANAL, mulberry32 } from "@/lib/ports";
-import { getTexture } from "@/lib/textures";
+import { getSurface, getTexture } from "@/lib/textures";
 
 const PASTELS = ["#f4d35e", "#ee6c4d", "#3d8ea9", "#e8a87c", "#9bc4bc", "#f2939b", "#d9b26f"];
 
@@ -14,7 +14,7 @@ export function House({
   w = 1.6,
   h = 1.6,
   color = "#f4d35e",
-  roof = "#a14a32",
+  roof = "#e6cdbd",
 }: {
   position: [number, number, number];
   rotY?: number;
@@ -27,28 +27,15 @@ export function House({
     <group position={position} rotation-y={rotY}>
       <mesh position-y={h / 2} castShadow>
         <boxGeometry args={[w, h, w * 0.85]} />
-        <meshStandardMaterial
-          color={color}
-          roughness={0.9}
-          map={getTexture("plaster", 2, 1.4)}
-          bumpMap={getTexture("plaster", 2, 1.4)}
-          bumpScale={0.025}
-        />
+        <meshStandardMaterial color={color} {...getSurface("plaster", 1.5, 1)} />
       </mesh>
       <mesh position-y={h + h * 0.3} rotation-y={Math.PI / 4} castShadow>
         <coneGeometry args={[w * 0.8, h * 0.62, 4]} />
-        <meshStandardMaterial
-          color={roof}
-          roughness={0.95}
-          flatShading
-          map={getTexture("roofTiles", 2, 1)}
-          bumpMap={getTexture("roofTiles", 2, 1)}
-          bumpScale={0.09}
-        />
+        <meshStandardMaterial color={roof} {...getSurface("roofTiles", 1.8, 1.2)} />
       </mesh>
       <mesh position={[0, h * 0.27, w * 0.44]}>
         <boxGeometry args={[w * 0.22, h * 0.5, 0.06]} />
-        <meshStandardMaterial color="#5a4128" map={getTexture("wood", 0.4, 1)} />
+        <meshStandardMaterial color="#cbb9a4" {...getSurface("wood", 0.35, 0.7)} />
       </mesh>
     </group>
   );
@@ -59,15 +46,27 @@ export function Tree({ position, s = 1 }: { position: [number, number, number]; 
     <group position={position} scale={s}>
       <mesh position-y={0.35} castShadow>
         <cylinderGeometry args={[0.07, 0.12, 0.7, 6]} />
-        <meshStandardMaterial color="#6b4a2c" roughness={1} />
+        <meshStandardMaterial color="#9b8266" {...getSurface("wood", 0.5, 1)} />
       </mesh>
       <mesh position-y={0.95} castShadow>
-        <sphereGeometry args={[0.48, 10, 8]} />
-        <meshStandardMaterial color="#5e9c52" roughness={1} flatShading />
+        <sphereGeometry args={[0.48, 12, 10]} />
+        <meshStandardMaterial
+          color="#5e9c52"
+          roughness={1}
+          map={getTexture("foliage", 1.5, 1.5)}
+          bumpMap={getTexture("foliage", 1.5, 1.5)}
+          bumpScale={0.06}
+        />
       </mesh>
       <mesh position={[0.22, 1.25, 0.08]} castShadow>
-        <sphereGeometry args={[0.3, 8, 6]} />
-        <meshStandardMaterial color="#74b262" roughness={1} flatShading />
+        <sphereGeometry args={[0.3, 10, 8]} />
+        <meshStandardMaterial
+          color="#74b262"
+          roughness={1}
+          map={getTexture("foliage", 1.2, 1.2)}
+          bumpMap={getTexture("foliage", 1.2, 1.2)}
+          bumpScale={0.05}
+        />
       </mesh>
     </group>
   );
@@ -92,8 +91,7 @@ export function ArchBridge({
         <meshStandardMaterial
           color="#e9e2d2"
           side={THREE.DoubleSide}
-          roughness={0.9}
-          map={getTexture("plaster", 4, 1)}
+          {...getSurface("plaster", 4, 1)}
         />
       </mesh>
       {/* railings along both edges of the deck */}
@@ -128,11 +126,11 @@ function Chapel() {
     <group>
       <mesh position-y={1.1} castShadow>
         <boxGeometry args={[2.6, 2.2, 2.1]} />
-        <meshStandardMaterial color="#f7f1e3" roughness={0.85} />
+        <meshStandardMaterial color="#f7f1e3" {...getSurface("plaster", 2, 1.6)} />
       </mesh>
       <mesh position-y={2.75} rotation-y={Math.PI / 4} castShadow>
         <coneGeometry args={[1.7, 1.1, 4]} />
-        <meshStandardMaterial color="#b35338" roughness={0.95} flatShading />
+        <meshStandardMaterial color="#deb9a4" {...getSurface("roofTiles", 2, 1)} />
       </mesh>
       <mesh position={[1.85, 1.8, 0]} castShadow>
         <cylinderGeometry args={[0.5, 0.55, 3.6, 10]} />
@@ -186,7 +184,7 @@ function MainIsland() {
       </mesh>
       <mesh position-y={0.74} receiveShadow>
         <cylinderGeometry args={[13.6, 13.6, 0.1, 48]} />
-        <meshStandardMaterial color="#d9c697" roughness={1} map={getTexture("calcada", 10, 10)} />
+        <meshStandardMaterial color="#e3d8c0" {...getSurface("calcada", 8, 8)} />
       </mesh>
       <group position-y={0.74}>
         <Chapel />
@@ -262,15 +260,15 @@ export function Clouds() {
         <group key={i} position={pos} scale={[1 + i * 0.2, 0.55, 1]}>
           <mesh>
             <sphereGeometry args={[2.6, 10, 8]} />
-            <meshStandardMaterial color="#ffffff" transparent opacity={0.92} />
+            <meshStandardMaterial color="#ffdfc0" transparent opacity={0.9} />
           </mesh>
           <mesh position={[2.4, -0.3, 0.4]}>
             <sphereGeometry args={[1.8, 10, 8]} />
-            <meshStandardMaterial color="#ffffff" transparent opacity={0.92} />
+            <meshStandardMaterial color="#ffd2ac" transparent opacity={0.9} />
           </mesh>
           <mesh position={[-2.3, -0.4, -0.3]}>
             <sphereGeometry args={[1.6, 10, 8]} />
-            <meshStandardMaterial color="#ffffff" transparent opacity={0.92} />
+            <meshStandardMaterial color="#ffdfc0" transparent opacity={0.9} />
           </mesh>
         </group>
       ))}
