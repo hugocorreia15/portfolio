@@ -282,24 +282,36 @@ export default function Overlay({
         <p className="mt-1.5 text-sm text-ink/65 md:text-[15px]">{profile.title}</p>
       </header>
 
-      {/* map switch — the imagined island or the real Aveiro */}
+      {/* map switch — the imagined island or the real Aveiro (coming soon) */}
       <div className="pointer-events-auto absolute left-1/2 top-5 z-40 flex -translate-x-1/2 rounded-full border border-ink/10 bg-salt/85 p-1 font-mono text-[11px] shadow-lg shadow-ink/10 backdrop-blur">
-        {(Object.keys(MAPS) as MapId[]).map((id) => (
-          <button
-            key={id}
-            onClick={(e) => {
-              e.currentTarget.blur();
-              if (id !== mapId) onSwitchMap(id);
-            }}
-            className={`rounded-full px-3.5 py-1.5 uppercase tracking-[0.15em] transition-colors ${
-              id === mapId
-                ? "bg-azulejo text-salt"
-                : "text-ink/55 hover:text-ink"
-            }`}
-          >
-            {MAPS[id].label}
-          </button>
-        ))}
+        {(Object.keys(MAPS) as MapId[]).map((id) => {
+          const soon = MAPS[id].comingSoon;
+          return (
+            <button
+              key={id}
+              disabled={soon}
+              title={soon ? "Coming soon" : undefined}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                if (!soon && id !== mapId) onSwitchMap(id);
+              }}
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 uppercase tracking-[0.15em] transition-colors ${
+                id === mapId
+                  ? "bg-azulejo text-salt"
+                  : soon
+                    ? "cursor-not-allowed text-ink/30"
+                    : "text-ink/55 hover:text-ink"
+              }`}
+            >
+              {MAPS[id].label}
+              {soon && (
+                <span className="rounded-full bg-ink/10 px-1.5 py-0.5 text-[8.5px] tracking-wider text-ink/45">
+                  soon
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* social links */}

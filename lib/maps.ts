@@ -19,6 +19,8 @@ interface MapBase {
   /** push pos back into legal water; true when something was hit */
   constrain: (pos: THREE.Vector3) => boolean;
   ambientCurve: THREE.CatmullRomCurve3;
+  /** shown in the toggle but not yet selectable */
+  comingSoon?: boolean;
 }
 
 export type MapDef = MapBase &
@@ -52,6 +54,7 @@ export const MAPS: Record<MapId, MapDef> = {
   aveiro: {
     id: "aveiro",
     label: "Aveiro",
+    comingSoon: true,
     kind: "network",
     ports: AVEIRO_PORTS,
     buildRoute: buildAveiroRoute,

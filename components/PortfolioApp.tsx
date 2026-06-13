@@ -106,6 +106,7 @@ export default function PortfolioApp() {
 
   // switching maps remounts the scene and sails into the new map's first port
   const handleSwitchMap = useCallback((id: MapId) => {
+    if (MAPS[id].comingSoon) return; // gated until the map is ready
     setMapId(id);
     setTargetIndex(0);
     setDockedIndex(null);

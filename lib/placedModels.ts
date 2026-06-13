@@ -45,6 +45,30 @@ export const PLACED_MODELS: PlacedModelDef[] = [
     yOffset: -0.4,
     islet: false,
   },
+  // same models placed on the island map (the one that ships first)
+  {
+    file: "igreja-barrocas.glb",
+    title: "Igreja das Barrocas — Aveiro",
+    author: "ricardo.turmas",
+    href: "https://sketchfab.com/3d-models/igreja-das-barrocas-aveiro-3813b360676244ac89879f6b922e1df4",
+    map: "island",
+    position: [26, 0, 6],
+    rotY: -2.0,
+    size: 9,
+    islet: true,
+  },
+  {
+    file: "ponte-carcavelos.glb",
+    title: "Ponte de Carcavelos — Aveiro",
+    author: "ricardo.turmas",
+    href: "https://sketchfab.com/3d-models/ponte-de-carcavelos-aveiro-4a504e3b7df541f0a2f489aed2b7d63c",
+    map: "island",
+    position: [-9, 0, 28],
+    rotY: 1.35,
+    size: 12,
+    yOffset: -0.4,
+    islet: false,
+  },
 ];
 
 /** The Trofa church can swap in for the island chapel — handled in City.tsx. */
