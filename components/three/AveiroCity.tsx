@@ -13,7 +13,7 @@ import {
 } from "@/lib/aveiro";
 import { mulberry32 } from "@/lib/ports";
 import { getSurface } from "@/lib/textures";
-import { ArchBridge, Clouds, House, Tree } from "@/components/three/City";
+import { BridgeModel, Clouds, House, Tree } from "@/components/three/City";
 import { SaltPyramid, StripedHouse } from "@/components/three/Landmarks";
 
 const PASTELS = ["#f4d35e", "#ee6c4d", "#3d8ea9", "#e8a87c", "#9bc4bc", "#f2939b", "#d9b26f", "#f3e3c3"];
@@ -301,7 +301,7 @@ export default function AveiroCity() {
       <StripedHouse position={[-175, 0.45, 35.5]} color="#2e8b57" stripes={5} />
 
       {AVEIRO_BRIDGES.map((b, i) => (
-        <ArchBridge key={i} position={b.pos} rotY={b.rotY} r={b.r} span={b.span} />
+        <BridgeModel key={i} position={b.pos} rotY={b.rotY} r={b.r} span={b.span} />
       ))}
 
       <Clouds />

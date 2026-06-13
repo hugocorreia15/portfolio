@@ -5,7 +5,6 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { BRIDGE_TS, CANAL, mulberry32 } from "@/lib/ports";
 import { getSurface, getTexture } from "@/lib/textures";
-import { TROFA_CHURCH } from "@/lib/placedModels";
 import { OptionalGlb } from "@/components/three/PlacedModel";
 
 const PASTELS = ["#f4d35e", "#ee6c4d", "#3d8ea9", "#e8a87c", "#9bc4bc", "#f2939b", "#d9b26f"];
@@ -114,13 +113,107 @@ export function ArchBridge({
   );
 }
 
+const RIBBON_COLORS = [
+  "#e5484d", "#f2a73d", "#f2d43d", "#3fa45b",
+  "#3d8ad9", "#7a52c9", "#e3559e", "#f4efe6",
+];
+
+/** Colourful ribbons hung along an arched railing — Aveiro's "ponte do laço". */
+function Ribbons({
+  span,
+  endY,
+  crownY,
+  z,
+  seed,
+}: {
+  span: number;
+  endY: number;
+  crownY: number;
+  z: number;
+  seed: number;
+}) {
+  const strips = useMemo(() => {
+    const rnd = mulberry32(seed);
+    const n = Math.max(10, Math.round(span / 0.22));
+    return Array.from({ length: n }, (_, i) => {
+      const x = -span / 2 + (i + 0.5) * (span / n);
+      const u = (2 * x) / span; // -1..1 across the span
+      const topY = endY + (crownY - endY) * (1 - u * u); // railing arch
+      return {
+        x,
+        topY,
+        h: 0.32 + rnd() * 0.5,
+        c: RIBBON_COLORS[Math.floor(rnd() * RIBBON_COLORS.length)],
+        tilt: (rnd() - 0.5) * 0.5,
+        dz: (rnd() - 0.5) * 0.1,
+      };
+    });
+  }, [span, endY, crownY, seed]);
+  return (
+    <group position={[0, 0, z]}>
+      {strips.map((s, i) => (
+        <mesh key={i} position={[s.x, s.topY - s.h / 2, s.dz]} rotation-z={s.tilt}>
+          <boxGeometry args={[0.09, s.h, 0.03]} />
+          <meshStandardMaterial color={s.c} roughness={0.65} side={THREE.DoubleSide} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/** Real Ponte de Carcavelos (a ribbon bridge) spanning the canal; procedural arch is the fallback. */
+export function BridgeModel({
+  position,
+  rotY,
+  r = 3.6,
+  span = 3.4,
+}: {
+  position: [number, number, number];
+  rotY: number;
+  r?: number;
+  span?: number;
+}) {
+  const size = THREE.MathUtils.clamp(r * 2.9, 10, 16);
+  const seed = Math.round(position[0] * 7 + position[2] * 13);
+  return (
+    <group>
+      <OptionalGlb
+        url="/models/ponte-carcavelos.glb"
+        position={position}
+        rotY={rotY}
+        size={size}
+        yOffset={-0.5}
+      >
+        <ArchBridge position={position} rotY={rotY} r={r} span={span} />
+      </OptionalGlb>
+      {/* ribbons tied along both arched railings */}
+      <group position={position} rotation-y={rotY}>
+        <Ribbons
+          span={size * 0.62}
+          endY={size * 0.06}
+          crownY={size * 0.23}
+          z={size * 0.12}
+          seed={seed}
+        />
+        <Ribbons
+          span={size * 0.62}
+          endY={size * 0.06}
+          crownY={size * 0.23}
+          z={-size * 0.12}
+          seed={seed + 99}
+        />
+      </group>
+    </group>
+  );
+}
+
 function Bridge({ t }: { t: number }) {
   const { pos, rotY } = useMemo(() => {
     const p = CANAL.getPointAt(t);
     const tan = CANAL.getTangentAt(t);
     return { pos: [p.x, 0, p.z] as [number, number, number], rotY: Math.atan2(tan.x, tan.z) };
   }, [t]);
-  return <ArchBridge position={pos} rotY={rotY} />;
+  return <BridgeModel position={pos} rotY={rotY} />;
 }
 
 function Chapel() {
@@ -188,12 +281,12 @@ function MainIsland() {
         <cylinderGeometry args={[13.6, 13.6, 0.1, 48]} />
         <meshStandardMaterial color="#e3d8c0" {...getSurface("calcada", 8, 8)} />
       </mesh>
-      {/* the real Igreja da Trofa swaps in for the chapel when downloaded */}
+      {/* the real Igreja das Barrocas is the town centrepiece (chapel = fallback) */}
       <OptionalGlb
-        url={`/models/${TROFA_CHURCH.file}`}
+        url="/models/igreja-barrocas.glb"
         position={[0, 0.74, 0]}
-        rotY={0.4}
-        size={TROFA_CHURCH.size}
+        rotY={0.3}
+        size={7}
       >
         <group position-y={0.74}>
           <Chapel />

@@ -9,12 +9,44 @@ import type { MapDef } from "@/lib/maps";
 import { getSurface, getTexture } from "@/lib/textures";
 
 const GLB_URL = "/models/moliceiro.glb";
-/** Tweak these if the Sketchfab model sits oddly (flip extraRotY to Math.PI if it sails backwards). */
-const GLB_TUNE = { length: 7.2, draft: 0.45, extraRotY: 0 };
+/** Tweak these if the Sketchfab model sits oddly (flip extraRotY to Math.PI if it sails backwards).
+ *  draft = how deep the hull's bounding-box bottom sits below the waterline. */
+const GLB_TUNE = { length: 7.2, draft: -0.35, extraRotY: 0 };
 
 const MAX_SPEED = 9.5;
 const MAX_REVERSE = -3.4;
 const DOCK_RANGE = 5.2;
+const BOAT_CLEARANCE = 4.4; // min centre distance between any two hulls
+
+// shared positions of every boat (slot 0 = player, 1/2 = ambient) so hulls
+// collide instead of passing through each other; lives at module scope because
+// the player and the ambient boats are separate components.
+type BoatMark = { x: number; z: number; active: boolean };
+const BOATS: BoatMark[] = [
+  { x: 0, z: 0, active: false },
+  { x: 0, z: 0, active: false },
+  { x: 0, z: 0, active: false },
+];
+
+/** Push pos out of every other boat's clearance circle. Returns true on contact. */
+function avoidBoats(pos: THREE.Vector3, selfIndex: number) {
+  let hit = false;
+  for (let i = 0; i < BOATS.length; i++) {
+    if (i === selfIndex) continue;
+    const b = BOATS[i];
+    if (!b.active) continue;
+    const dx = pos.x - b.x;
+    const dz = pos.z - b.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 0.0001 && d < BOAT_CLEARANCE) {
+      const push = BOAT_CLEARANCE - d;
+      pos.x += (dx / d) * push;
+      pos.z += (dz / d) * push;
+      hit = true;
+    }
+  }
+  return hit;
+}
 
 // scratch vectors reused every frame to avoid per-frame allocations
 const _pos = new THREE.Vector3();
@@ -296,6 +328,13 @@ export default function Moliceiro({
     arrived.current = false;
   }, [targetIndex]);
 
+  // drop the player's collider when the scene unmounts (e.g. map switch)
+  useEffect(() => {
+    return () => {
+      BOATS[0].active = false;
+    };
+  }, []);
+
   // keyboard: WASD/arrows take the helm, E/Enter docks when alongside a pier
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -474,6 +513,7 @@ export default function Moliceiro({
 
       ph.pos.x += Math.sin(ph.heading) * ph.speed * dt;
       ph.pos.z += Math.cos(ph.heading) * ph.speed * dt;
+      if (avoidBoats(ph.pos, 0)) ph.speed *= Math.max(0, 1 - 5 * dt);
       if (map.constrain(ph.pos)) ph.speed *= Math.max(0, 1 - 3 * dt);
 
       // alongside a pier? offer to dock
@@ -495,6 +535,11 @@ export default function Moliceiro({
       }
     }
     wasManual.current = manual;
+
+    // publish the player's hull so the ambient boats steer clear of it
+    BOATS[0].x = ph.pos.x;
+    BOATS[0].z = ph.pos.z;
+    BOATS[0].active = true;
 
     if (group.current) {
       const lean =
@@ -652,14 +697,36 @@ export function AmbientBoats({ curve }: { curve: THREE.CatmullRomCurve3 }) {
       const n = _normal.set(-tan.z, 0, tan.x).normalize();
       if (n.dot(p) < 0) n.negate();
       // sail an inner lane so they never overlap a docked moliceiro
-      g.position.set(
-        p.x - n.x * 2.1,
-        Math.sin(state.clock.elapsedTime * 1.3 + i * 2) * 0.05,
-        p.z - n.z * 2.1
-      );
+      let bx = p.x - n.x * 2.1;
+      let bz = p.z - n.z * 2.1;
+      // yield to the player (slot 0) and the other ambient boat
+      const slot = i + 1;
+      for (const j of [0, i === 0 ? 2 : 1]) {
+        const b = BOATS[j];
+        if (!b.active) continue;
+        const dx = bx - b.x;
+        const dz = bz - b.z;
+        const d = Math.hypot(dx, dz);
+        if (d > 0.0001 && d < BOAT_CLEARANCE) {
+          const push = BOAT_CLEARANCE - d;
+          bx += (dx / d) * push;
+          bz += (dz / d) * push;
+        }
+      }
+      BOATS[slot].x = bx;
+      BOATS[slot].z = bz;
+      BOATS[slot].active = true;
+      g.position.set(bx, Math.sin(state.clock.elapsedTime * 1.3 + i * 2) * 0.05, bz);
       g.rotation.y = Math.atan2(tan.x, tan.z);
     });
   });
+
+  useEffect(() => {
+    return () => {
+      BOATS[1].active = false;
+      BOATS[2].active = false;
+    };
+  }, []);
 
   const hasGlb = useHasGlb();
   const boat = (accent: string, accent2: string) =>
