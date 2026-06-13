@@ -149,9 +149,9 @@ function BridgeGlb({ size, seed }: { size: number; seed: number }) {
     return {
       obj: wrap,
       dims: {
-        alongZ: sz.z >= sz.x, // is the bridge's length its local Z axis?
-        len: longest * s, // bridge length, along its long axis
-        depth: Math.min(sz.x, sz.z) * s, // deck depth, across
+        // the deck span is always local X (matches the procedural arch + rotY);
+        // local Z can be longer because the capture includes the canal banks.
+        spanX: sz.x * s,
         topH: sz.y * s,
         groundY,
       },
@@ -160,10 +160,10 @@ function BridgeGlb({ size, seed }: { size: number; seed: number }) {
 
   const ribbons = useMemo(() => {
     const rnd = mulberry32(seed);
-    const { alongZ, len, depth, topH, groundY } = dims;
-    const half = len * 0.3; // tied over the central 60% of the span
-    const edge = depth * 0.34; // just inside the deck railings
-    const railY = groundY + topH * 0.52; // railing height (below any lamp/finial)
+    const { spanX, topH, groundY } = dims;
+    const half = spanX * 0.34; // along the span, central portion
+    const zEdge = spanX * 0.12; // deck railing offset (walkway is narrow)
+    const railY = groundY + topH * 0.5; // railing height (below any lamp/finial)
     const out: Array<{
       x: number;
       z: number;
@@ -172,15 +172,15 @@ function BridgeGlb({ size, seed }: { size: number; seed: number }) {
       c: string;
       tilt: number;
     }> = [];
-    for (const side of [edge, -edge]) {
+    for (const z of [zEdge, -zEdge]) {
       const n = Math.max(8, Math.round((half * 2) / 0.24));
       for (let i = 0; i < n; i++) {
-        const t = -half + (i + 0.5) * ((half * 2) / n);
-        const u = t / half;
+        const x = -half + (i + 0.5) * ((half * 2) / n);
+        const u = x / half;
         const topY = railY - topH * 0.08 * u * u; // gentle dip toward the ends
         out.push({
-          x: alongZ ? side : t, // length runs along Z (alongZ) or X
-          z: alongZ ? t : side,
+          x,
+          z,
           topY,
           h: 0.3 + rnd() * 0.4,
           c: RIBBON_COLORS[Math.floor(rnd() * RIBBON_COLORS.length)],
