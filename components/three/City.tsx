@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { Suspense, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { BRIDGE_TS, CANAL, mulberry32 } from "@/lib/ports";
 import { getSurface, getTexture } from "@/lib/textures";
-import { OptionalGlb } from "@/components/three/PlacedModel";
+import { OptionalGlb, useModelFile } from "@/components/three/PlacedModel";
 
 const PASTELS = ["#f4d35e", "#ee6c4d", "#3d8ea9", "#e8a87c", "#9bc4bc", "#f2939b", "#d9b26f"];
 
@@ -118,43 +119,84 @@ const RIBBON_COLORS = [
   "#3d8ad9", "#7a52c9", "#e3559e", "#f4efe6",
 ];
 
-/** Colourful ribbons hung along an arched railing — Aveiro's "ponte do laço". */
-function Ribbons({
-  span,
-  endY,
-  crownY,
-  z,
-  seed,
-}: {
-  span: number;
-  endY: number;
-  crownY: number;
-  z: number;
-  seed: number;
-}) {
-  const strips = useMemo(() => {
-    const rnd = mulberry32(seed);
-    const n = Math.max(10, Math.round(span / 0.22));
-    return Array.from({ length: n }, (_, i) => {
-      const x = -span / 2 + (i + 0.5) * (span / n);
-      const u = (2 * x) / span; // -1..1 across the span
-      const topY = endY + (crownY - endY) * (1 - u * u); // railing arch
-      return {
-        x,
-        topY,
-        h: 0.32 + rnd() * 0.5,
-        c: RIBBON_COLORS[Math.floor(rnd() * RIBBON_COLORS.length)],
-        tilt: (rnd() - 0.5) * 0.5,
-        dz: (rnd() - 0.5) * 0.1,
-      };
+const BRIDGE_GLB = "/models/ponte-carcavelos.glb";
+
+/** The real Ponte de Carcavelos, with ribbons measured onto its actual deck. */
+function BridgeGlb({ size, seed }: { size: number; seed: number }) {
+  const { scene } = useGLTF(BRIDGE_GLB);
+
+  const { obj, dims } = useMemo(() => {
+    const o = scene.clone(true);
+    o.traverse((m) => {
+      const mesh = m as THREE.Mesh;
+      if (mesh.isMesh) {
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+      }
     });
-  }, [span, endY, crownY, seed]);
+    const box = new THREE.Box3().setFromObject(o);
+    const sz = box.getSize(new THREE.Vector3());
+    const ctr = box.getCenter(new THREE.Vector3());
+    o.position.sub(ctr);
+    if (sz.z > sz.x) o.rotation.y = Math.PI / 2;
+    const longest = Math.max(sz.x, sz.z);
+    const s = size / longest;
+    const wrap = new THREE.Group();
+    wrap.add(o);
+    wrap.scale.setScalar(s);
+    const groundY = -0.5;
+    wrap.position.y = (sz.y * s) / 2 + groundY;
+    return {
+      obj: wrap,
+      dims: {
+        len: longest * s, // bridge length, along local X
+        depth: Math.min(sz.x, sz.z) * s, // deck depth, along local Z
+        topH: sz.y * s, // height above the keel
+        groundY,
+      },
+    };
+  }, [scene, size]);
+
+  const ribbons = useMemo(() => {
+    const rnd = mulberry32(seed);
+    const { len, depth, topH, groundY } = dims;
+    const half = len * 0.3; // tied over the central 60% of the span
+    const zEdge = depth * 0.34; // just inside the deck railings
+    const railY = groundY + topH * 0.52; // railing height (below any lamp/finial)
+    const out: Array<{
+      x: number;
+      z: number;
+      topY: number;
+      h: number;
+      c: string;
+      tilt: number;
+    }> = [];
+    for (const z of [zEdge, -zEdge]) {
+      const n = Math.max(8, Math.round((half * 2) / 0.24));
+      for (let i = 0; i < n; i++) {
+        const x = -half + (i + 0.5) * ((half * 2) / n);
+        const u = x / half;
+        const topY = railY - topH * 0.08 * u * u; // gentle dip toward the ends
+        out.push({
+          x,
+          z,
+          topY,
+          h: 0.3 + rnd() * 0.4,
+          c: RIBBON_COLORS[Math.floor(rnd() * RIBBON_COLORS.length)],
+          tilt: (rnd() - 0.5) * 0.4,
+        });
+      }
+    }
+    return out;
+  }, [dims, seed]);
+
   return (
-    <group position={[0, 0, z]}>
-      {strips.map((s, i) => (
-        <mesh key={i} position={[s.x, s.topY - s.h / 2, s.dz]} rotation-z={s.tilt}>
-          <boxGeometry args={[0.09, s.h, 0.03]} />
-          <meshStandardMaterial color={s.c} roughness={0.65} side={THREE.DoubleSide} />
+    <group>
+      <primitive object={obj} />
+      {ribbons.map((rb, i) => (
+        <mesh key={i} position={[rb.x, rb.topY - rb.h / 2, rb.z]} rotation-z={rb.tilt}>
+          <boxGeometry args={[0.08, rb.h, 0.03]} />
+          <meshStandardMaterial color={rb.c} roughness={0.65} side={THREE.DoubleSide} />
         </mesh>
       ))}
     </group>
@@ -175,34 +217,16 @@ export function BridgeModel({
 }) {
   const size = THREE.MathUtils.clamp(r * 2.9, 10, 16);
   const seed = Math.round(position[0] * 7 + position[2] * 13);
+  const has = useModelFile(BRIDGE_GLB);
   return (
-    <group>
-      <OptionalGlb
-        url="/models/ponte-carcavelos.glb"
-        position={position}
-        rotY={rotY}
-        size={size}
-        yOffset={-0.5}
-      >
-        <ArchBridge position={position} rotY={rotY} r={r} span={span} />
-      </OptionalGlb>
-      {/* ribbons tied along both arched railings */}
-      <group position={position} rotation-y={rotY}>
-        <Ribbons
-          span={size * 0.62}
-          endY={size * 0.06}
-          crownY={size * 0.23}
-          z={size * 0.12}
-          seed={seed}
-        />
-        <Ribbons
-          span={size * 0.62}
-          endY={size * 0.06}
-          crownY={size * 0.23}
-          z={-size * 0.12}
-          seed={seed + 99}
-        />
-      </group>
+    <group position={position} rotation-y={rotY}>
+      {has ? (
+        <Suspense fallback={<ArchBridge position={[0, 0, 0]} rotY={0} r={r} span={span} />}>
+          <BridgeGlb size={size} seed={seed} />
+        </Suspense>
+      ) : (
+        <ArchBridge position={[0, 0, 0]} rotY={0} r={r} span={span} />
+      )}
     </group>
   );
 }
