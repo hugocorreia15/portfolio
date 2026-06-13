@@ -138,7 +138,7 @@ function BridgeGlb({ size, seed }: { size: number; seed: number }) {
     const sz = box.getSize(new THREE.Vector3());
     const ctr = box.getCenter(new THREE.Vector3());
     o.position.sub(ctr);
-    if (sz.z > sz.x) o.rotation.y = Math.PI / 2;
+    // keep the model's native orientation (the group's rotY aligns it to the canal)
     const longest = Math.max(sz.x, sz.z);
     const s = size / longest;
     const wrap = new THREE.Group();
@@ -149,9 +149,10 @@ function BridgeGlb({ size, seed }: { size: number; seed: number }) {
     return {
       obj: wrap,
       dims: {
-        len: longest * s, // bridge length, along local X
-        depth: Math.min(sz.x, sz.z) * s, // deck depth, along local Z
-        topH: sz.y * s, // height above the keel
+        alongZ: sz.z >= sz.x, // is the bridge's length its local Z axis?
+        len: longest * s, // bridge length, along its long axis
+        depth: Math.min(sz.x, sz.z) * s, // deck depth, across
+        topH: sz.y * s,
         groundY,
       },
     };
@@ -159,9 +160,9 @@ function BridgeGlb({ size, seed }: { size: number; seed: number }) {
 
   const ribbons = useMemo(() => {
     const rnd = mulberry32(seed);
-    const { len, depth, topH, groundY } = dims;
+    const { alongZ, len, depth, topH, groundY } = dims;
     const half = len * 0.3; // tied over the central 60% of the span
-    const zEdge = depth * 0.34; // just inside the deck railings
+    const edge = depth * 0.34; // just inside the deck railings
     const railY = groundY + topH * 0.52; // railing height (below any lamp/finial)
     const out: Array<{
       x: number;
@@ -171,15 +172,15 @@ function BridgeGlb({ size, seed }: { size: number; seed: number }) {
       c: string;
       tilt: number;
     }> = [];
-    for (const z of [zEdge, -zEdge]) {
+    for (const side of [edge, -edge]) {
       const n = Math.max(8, Math.round((half * 2) / 0.24));
       for (let i = 0; i < n; i++) {
-        const x = -half + (i + 0.5) * ((half * 2) / n);
-        const u = x / half;
+        const t = -half + (i + 0.5) * ((half * 2) / n);
+        const u = t / half;
         const topY = railY - topH * 0.08 * u * u; // gentle dip toward the ends
         out.push({
-          x,
-          z,
+          x: alongZ ? side : t, // length runs along Z (alongZ) or X
+          z: alongZ ? t : side,
           topY,
           h: 0.3 + rnd() * 0.4,
           c: RIBBON_COLORS[Math.floor(rnd() * RIBBON_COLORS.length)],
