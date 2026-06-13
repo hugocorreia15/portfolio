@@ -68,6 +68,7 @@ export function OptionalGlb({
   rotY = 0,
   size,
   islet = false,
+  yOffset = 0,
   children,
 }: {
   url: string;
@@ -75,6 +76,7 @@ export function OptionalGlb({
   rotY?: number;
   size: number;
   islet?: boolean;
+  yOffset?: number;
   children?: React.ReactNode;
 }) {
   const has = useModelFile(url);
@@ -88,7 +90,7 @@ export function OptionalGlb({
         </mesh>
       )}
       <Suspense fallback={children ? <>{children}</> : null}>
-        <Glb url={url} size={size} y={islet ? 0.1 : 0} />
+        <Glb url={url} size={size} y={(islet ? 0.1 : 0) + yOffset} />
       </Suspense>
     </group>
   );
@@ -106,6 +108,7 @@ export default function PlacedModels({ map }: { map: MapId }) {
           rotY={m.rotY}
           size={m.size}
           islet={m.islet}
+          yOffset={m.yOffset}
         />
       ))}
     </>
