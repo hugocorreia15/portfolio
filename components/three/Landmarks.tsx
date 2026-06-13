@@ -3,7 +3,16 @@
 import { useMemo } from "react";
 import * as THREE from "three";
 import type { PortDef } from "@/lib/ports";
-import { House, Tree } from "@/components/three/City";
+import {
+  Barrel,
+  Bench,
+  Bush,
+  Crates,
+  House,
+  Lamppost,
+  Planter,
+  Tree,
+} from "@/components/three/City";
 import { getSurface, getTexture } from "@/lib/textures";
 
 /** Triangle prism roof with the ridge running along z — the Costa Nova gable. */
@@ -258,6 +267,11 @@ export default function Landmark({ port }: { port: PortDef }) {
   const isSalinas = port.id === "skills";
   const r = port.platformR ?? 7;
   const contentScale = Math.min(1, r / 6.2);
+  const dress = {
+    barrels: ["about", "experience", "projects", "skills"].includes(port.id),
+    crates: ["experience", "projects", "contact"].includes(port.id),
+    planter: ["education", "about", "contact"].includes(port.id),
+  };
   return (
     <group
       position={[port.landmarkPos.x, 0, port.landmarkPos.z]}
@@ -273,6 +287,21 @@ export default function Landmark({ port }: { port: PortDef }) {
       </mesh>
       <group position-y={0.64} scale={contentScale}>
         <LandmarkContent id={port.id} />
+      </group>
+      {/* quayside dressing — lamps, seating, greenery and clutter on every island */}
+      <group position-y={0.64}>
+        <Lamppost position={[-r * 0.64, 0, r * 0.48]} s={0.9} />
+        <Lamppost position={[r * 0.64, 0, r * 0.48]} s={0.9} />
+        <Bench position={[r * 0.52, 0, -r * 0.42]} rotY={-2.3} s={0.95} />
+        <Bush position={[-r * 0.62, 0, -r * 0.4]} />
+        <Bush position={[r * 0.5, 0, -r * 0.62]} s={0.9} />
+        <Bush position={[-r * 0.28, 0, -r * 0.7]} s={1.1} />
+        {!isSalinas && <Tree position={[-r * 0.74, 0, r * 0.05]} s={0.85} />}
+        {dress.barrels && <Barrel position={[-r * 0.5, 0, r * 0.56]} s={0.9} />}
+        {dress.crates && (
+          <Crates position={[r * 0.44, 0, r * 0.56]} rotY={0.4} s={0.9} />
+        )}
+        {dress.planter && <Planter position={[0, 0, r * 0.8]} s={0.9} />}
       </group>
     </group>
   );

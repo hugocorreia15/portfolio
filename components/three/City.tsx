@@ -1,12 +1,11 @@
 "use client";
 
-import { Suspense, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { BRIDGE_TS, CANAL, mulberry32 } from "@/lib/ports";
 import { getSurface, getTexture } from "@/lib/textures";
-import { OptionalGlb, useModelFile } from "@/components/three/PlacedModel";
+import { OptionalGlb } from "@/components/three/PlacedModel";
 
 const PASTELS = ["#f4d35e", "#ee6c4d", "#3d8ea9", "#e8a87c", "#9bc4bc", "#f2939b", "#d9b26f"];
 
@@ -43,33 +42,222 @@ export function House({
   );
 }
 
+/** Broadleaf (clustered) or occasional pine, varied per position. */
 export function Tree({ position, s = 1 }: { position: [number, number, number]; s?: number }) {
+  const { trunkH, lean, blobs } = useMemo(() => {
+    const rnd = mulberry32(Math.round(position[0] * 53.1 + position[2] * 17.7 + 11));
+    const lean = (rnd() - 0.5) * 0.1;
+    const pine = rnd() > 0.72;
+    const greens = pine
+      ? ["#3c6b39", "#477f42", "#355f37"]
+      : ["#5a9c4e", "#69b05c", "#4d8a43", "#7cc06a", "#5fa553"];
+    const n = pine ? 3 : 4 + Math.floor(rnd() * 3);
+    const blobs = Array.from({ length: n }, (_, i) => {
+      const t = i / Math.max(1, n - 1);
+      return {
+        pine,
+        x: (rnd() - 0.5) * (pine ? 0.16 : 0.56),
+        y: 1.0 + t * (pine ? 1.4 : 1.0) + rnd() * 0.12,
+        z: (rnd() - 0.5) * (pine ? 0.16 : 0.56),
+        r: pine ? 0.66 - t * 0.4 : 0.33 + rnd() * 0.3,
+        c: greens[Math.floor(rnd() * greens.length)],
+      };
+    });
+    return { trunkH: 0.85 + rnd() * 0.4, lean, blobs };
+  }, [position]);
+
+  return (
+    <group position={position} scale={s} rotation-z={lean}>
+      <mesh position-y={trunkH / 2} castShadow>
+        <cylinderGeometry args={[0.08, 0.18, trunkH, 7]} />
+        <meshStandardMaterial color="#8a6a47" {...getSurface("wood", 0.5, 1.4)} />
+      </mesh>
+      {blobs.map((b, i) => (
+        <mesh key={i} position={[b.x, b.y, b.z]} castShadow>
+          {b.pine ? (
+            <coneGeometry args={[b.r, b.r * 1.6, 8]} />
+          ) : (
+            <icosahedronGeometry args={[b.r, 1]} />
+          )}
+          <meshStandardMaterial
+            color={b.c}
+            roughness={1}
+            flatShading
+            map={getTexture("foliage", 1, 1)}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+const FLOWER_COLORS = ["#e5556b", "#f2a73d", "#f2d84a", "#e8e3d6", "#d6608f", "#6fae5a"];
+
+/** Ornate iron lamppost with a warm glowing lantern. */
+export function Lamppost({ position, s = 1 }: { position: [number, number, number]; s?: number }) {
   return (
     <group position={position} scale={s}>
-      <mesh position-y={0.35} castShadow>
-        <cylinderGeometry args={[0.07, 0.12, 0.7, 6]} />
-        <meshStandardMaterial color="#9b8266" {...getSurface("wood", 0.5, 1)} />
+      <mesh position-y={0.1} castShadow>
+        <cylinderGeometry args={[0.18, 0.24, 0.2, 8]} />
+        <meshStandardMaterial color="#21242b" roughness={0.6} metalness={0.3} />
       </mesh>
-      <mesh position-y={0.95} castShadow>
-        <sphereGeometry args={[0.48, 12, 10]} />
-        <meshStandardMaterial
-          color="#5e9c52"
-          roughness={1}
-          map={getTexture("foliage", 1.5, 1.5)}
-          bumpMap={getTexture("foliage", 1.5, 1.5)}
-          bumpScale={0.06}
-        />
+      <mesh position-y={1.2} castShadow>
+        <cylinderGeometry args={[0.055, 0.09, 2.2, 8]} />
+        <meshStandardMaterial color="#26303a" roughness={0.5} metalness={0.4} />
       </mesh>
-      <mesh position={[0.22, 1.25, 0.08]} castShadow>
-        <sphereGeometry args={[0.3, 10, 8]} />
-        <meshStandardMaterial
-          color="#74b262"
-          roughness={1}
-          map={getTexture("foliage", 1.2, 1.2)}
-          bumpMap={getTexture("foliage", 1.2, 1.2)}
-          bumpScale={0.05}
-        />
+      <mesh position-y={2.4} castShadow>
+        <boxGeometry args={[0.32, 0.44, 0.32]} />
+        <meshStandardMaterial color="#1c232b" roughness={0.5} metalness={0.4} />
       </mesh>
+      <mesh position-y={2.4}>
+        <boxGeometry args={[0.2, 0.32, 0.2]} />
+        <meshStandardMaterial color="#ffe6ad" emissive="#ffcf7a" emissiveIntensity={1.7} />
+      </mesh>
+      <mesh position-y={2.68} castShadow>
+        <coneGeometry args={[0.26, 0.22, 4]} />
+        <meshStandardMaterial color="#1c232b" roughness={0.5} />
+      </mesh>
+    </group>
+  );
+}
+
+/** Wooden quay bench. */
+export function Bench({
+  position,
+  rotY = 0,
+  s = 1,
+}: {
+  position: [number, number, number];
+  rotY?: number;
+  s?: number;
+}) {
+  return (
+    <group position={position} rotation-y={rotY} scale={s}>
+      <mesh position-y={0.32} castShadow>
+        <boxGeometry args={[1.3, 0.08, 0.4]} />
+        <meshStandardMaterial color="#9c7a4f" {...getSurface("wood", 1.5, 0.5)} />
+      </mesh>
+      <mesh position={[0, 0.56, -0.16]} rotation-x={-0.18} castShadow>
+        <boxGeometry args={[1.3, 0.36, 0.06]} />
+        <meshStandardMaterial color="#9c7a4f" {...getSurface("wood", 1.5, 0.5)} />
+      </mesh>
+      {[-0.55, 0.55].map((x) => (
+        <mesh key={x} position={[x, 0.16, 0]} castShadow>
+          <boxGeometry args={[0.08, 0.32, 0.38]} />
+          <meshStandardMaterial color="#3b332a" roughness={0.6} metalness={0.2} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/** A wine/salt barrel. */
+export function Barrel({ position, s = 1 }: { position: [number, number, number]; s?: number }) {
+  return (
+    <group position={position} scale={s}>
+      <mesh position-y={0.33} castShadow>
+        <cylinderGeometry args={[0.26, 0.3, 0.66, 12]} />
+        <meshStandardMaterial color="#7a5230" {...getSurface("wood", 1, 0.6)} />
+      </mesh>
+      {[0.12, 0.54].map((y) => (
+        <mesh key={y} position-y={y}>
+          <torusGeometry args={[0.285, 0.025, 6, 16]} />
+          <meshStandardMaterial color="#2c2620" roughness={0.6} metalness={0.3} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/** A stack of crates. */
+export function Crates({
+  position,
+  rotY = 0,
+  s = 1,
+}: {
+  position: [number, number, number];
+  rotY?: number;
+  s?: number;
+}) {
+  return (
+    <group position={position} rotation-y={rotY} scale={s}>
+      <mesh position-y={0.3} castShadow>
+        <boxGeometry args={[0.6, 0.6, 0.6]} />
+        <meshStandardMaterial color="#9c7a4f" {...getSurface("wood", 0.8, 0.8)} />
+      </mesh>
+      <mesh position={[0.18, 0.85, 0.1]} rotation-y={0.4} castShadow>
+        <boxGeometry args={[0.5, 0.5, 0.5]} />
+        <meshStandardMaterial color="#a8855a" {...getSurface("wood", 0.8, 0.8)} />
+      </mesh>
+    </group>
+  );
+}
+
+/** A flower planter box. */
+export function Planter({
+  position,
+  rotY = 0,
+  s = 1,
+}: {
+  position: [number, number, number];
+  rotY?: number;
+  s?: number;
+}) {
+  const flowers = useMemo(() => {
+    const rnd = mulberry32(Math.round(position[0] * 31 + position[2] * 19 + 5));
+    return Array.from({ length: 8 }, () => ({
+      x: (rnd() - 0.5) * 0.8,
+      z: (rnd() - 0.5) * 0.28,
+      c: FLOWER_COLORS[Math.floor(rnd() * FLOWER_COLORS.length)],
+      h: 0.1 + rnd() * 0.12,
+    }));
+  }, [position]);
+  return (
+    <group position={position} rotation-y={rotY} scale={s}>
+      <mesh position-y={0.16} castShadow>
+        <boxGeometry args={[1, 0.32, 0.4]} />
+        <meshStandardMaterial color="#8a6a47" {...getSurface("wood", 1.2, 0.5)} />
+      </mesh>
+      <mesh position-y={0.34}>
+        <boxGeometry args={[0.9, 0.08, 0.32]} />
+        <meshStandardMaterial color="#4f7e44" roughness={1} />
+      </mesh>
+      {flowers.map((f, i) => (
+        <mesh key={i} position={[f.x, 0.42 + f.h / 2, f.z]}>
+          <sphereGeometry args={[0.07, 6, 5]} />
+          <meshStandardMaterial color={f.c} roughness={0.7} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/** Low foliage bush. */
+export function Bush({ position, s = 1 }: { position: [number, number, number]; s?: number }) {
+  const blobs = useMemo(() => {
+    const rnd = mulberry32(Math.round(position[0] * 41 + position[2] * 23 + 9));
+    const greens = ["#4f8a45", "#5d9c50", "#69ad5b"];
+    return Array.from({ length: 3 }, () => ({
+      x: (rnd() - 0.5) * 0.5,
+      y: 0.2 + rnd() * 0.16,
+      z: (rnd() - 0.5) * 0.5,
+      r: 0.26 + rnd() * 0.16,
+      c: greens[Math.floor(rnd() * greens.length)],
+    }));
+  }, [position]);
+  return (
+    <group position={position} scale={s}>
+      {blobs.map((b, i) => (
+        <mesh key={i} position={[b.x, b.y, b.z]} castShadow>
+          <icosahedronGeometry args={[b.r, 1]} />
+          <meshStandardMaterial
+            color={b.c}
+            roughness={1}
+            flatShading
+            map={getTexture("foliage", 1, 1)}
+          />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -114,97 +302,9 @@ export function ArchBridge({
   );
 }
 
-const RIBBON_COLORS = [
-  "#e5484d", "#f2a73d", "#f2d43d", "#3fa45b",
-  "#3d8ad9", "#7a52c9", "#e3559e", "#f4efe6",
-];
-
 const BRIDGE_GLB = "/models/ponte-carcavelos.glb";
 
-/** The real Ponte de Carcavelos, with ribbons measured onto its actual deck. */
-function BridgeGlb({ size, seed }: { size: number; seed: number }) {
-  const { scene } = useGLTF(BRIDGE_GLB);
-
-  const { obj, dims } = useMemo(() => {
-    const o = scene.clone(true);
-    o.traverse((m) => {
-      const mesh = m as THREE.Mesh;
-      if (mesh.isMesh) {
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-      }
-    });
-    const box = new THREE.Box3().setFromObject(o);
-    const sz = box.getSize(new THREE.Vector3());
-    const ctr = box.getCenter(new THREE.Vector3());
-    o.position.sub(ctr);
-    // keep the model's native orientation (the group's rotY aligns it to the canal)
-    const longest = Math.max(sz.x, sz.z);
-    const s = size / longest;
-    const wrap = new THREE.Group();
-    wrap.add(o);
-    wrap.scale.setScalar(s);
-    const groundY = -0.5;
-    wrap.position.y = (sz.y * s) / 2 + groundY;
-    return {
-      obj: wrap,
-      dims: {
-        // the deck span is always local X (matches the procedural arch + rotY);
-        // local Z can be longer because the capture includes the canal banks.
-        spanX: sz.x * s,
-        topH: sz.y * s,
-        groundY,
-      },
-    };
-  }, [scene, size]);
-
-  const ribbons = useMemo(() => {
-    const rnd = mulberry32(seed);
-    const { spanX, topH, groundY } = dims;
-    const half = spanX * 0.34; // along the span, central portion
-    const zEdge = spanX * 0.12; // deck railing offset (walkway is narrow)
-    const railY = groundY + topH * 0.5; // railing height (below any lamp/finial)
-    const out: Array<{
-      x: number;
-      z: number;
-      topY: number;
-      h: number;
-      c: string;
-      tilt: number;
-    }> = [];
-    for (const z of [zEdge, -zEdge]) {
-      const n = Math.max(8, Math.round((half * 2) / 0.24));
-      for (let i = 0; i < n; i++) {
-        const x = -half + (i + 0.5) * ((half * 2) / n);
-        const u = x / half;
-        const topY = railY - topH * 0.08 * u * u; // gentle dip toward the ends
-        out.push({
-          x,
-          z,
-          topY,
-          h: 0.3 + rnd() * 0.4,
-          c: RIBBON_COLORS[Math.floor(rnd() * RIBBON_COLORS.length)],
-          tilt: (rnd() - 0.5) * 0.4,
-        });
-      }
-    }
-    return out;
-  }, [dims, seed]);
-
-  return (
-    <group>
-      <primitive object={obj} />
-      {ribbons.map((rb, i) => (
-        <mesh key={i} position={[rb.x, rb.topY - rb.h / 2, rb.z]} rotation-z={rb.tilt}>
-          <boxGeometry args={[0.08, rb.h, 0.03]} />
-          <meshStandardMaterial color={rb.c} roughness={0.65} side={THREE.DoubleSide} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-/** Real Ponte de Carcavelos (a ribbon bridge) spanning the canal; procedural arch is the fallback. */
+/** Real Ponte de Carcavelos spanning the canal; procedural arch is the fallback. */
 export function BridgeModel({
   position,
   rotY,
@@ -217,18 +317,16 @@ export function BridgeModel({
   span?: number;
 }) {
   const size = THREE.MathUtils.clamp(r * 2.9, 10, 16);
-  const seed = Math.round(position[0] * 7 + position[2] * 13);
-  const has = useModelFile(BRIDGE_GLB);
   return (
-    <group position={position} rotation-y={rotY}>
-      {has ? (
-        <Suspense fallback={<ArchBridge position={[0, 0, 0]} rotY={0} r={r} span={span} />}>
-          <BridgeGlb size={size} seed={seed} />
-        </Suspense>
-      ) : (
-        <ArchBridge position={[0, 0, 0]} rotY={0} r={r} span={span} />
-      )}
-    </group>
+    <OptionalGlb
+      url={BRIDGE_GLB}
+      position={position}
+      rotY={rotY}
+      size={size}
+      yOffset={-0.5}
+    >
+      <ArchBridge position={position} rotY={rotY} r={r} span={span} />
+    </OptionalGlb>
   );
 }
 
@@ -286,12 +384,24 @@ function MainIsland() {
 
   const trees = useMemo(() => {
     const rnd = mulberry32(21);
-    return Array.from({ length: 7 }, () => {
+    return Array.from({ length: 11 }, () => {
       const a = rnd() * Math.PI * 2;
-      const r = 4 + rnd() * 4.5;
+      const r = 4 + rnd() * 5;
       return {
         position: [Math.cos(a) * r, 0.7, Math.sin(a) * r] as [number, number, number],
-        s: 0.8 + rnd() * 0.7,
+        s: 0.85 + rnd() * 0.8,
+      };
+    });
+  }, []);
+
+  const bushes = useMemo(() => {
+    const rnd = mulberry32(57);
+    return Array.from({ length: 8 }, () => {
+      const a = rnd() * Math.PI * 2;
+      const r = 4.5 + rnd() * 6.5;
+      return {
+        position: [Math.cos(a) * r, 0.74, Math.sin(a) * r] as [number, number, number],
+        s: 0.8 + rnd() * 0.6,
       };
     });
   }, []);
@@ -323,6 +433,34 @@ function MainIsland() {
       {trees.map((t, i) => (
         <Tree key={i} {...t} />
       ))}
+      {bushes.map((b, i) => (
+        <Bush key={i} position={b.position} s={b.s} />
+      ))}
+      {/* lampposts ringing the church plaza */}
+      {[0, 1, 2, 3].map((i) => {
+        const a = (i / 4) * Math.PI * 2 + 0.4;
+        return (
+          <Lamppost key={i} position={[Math.cos(a) * 5.2, 0.74, Math.sin(a) * 5.2]} />
+        );
+      })}
+      {/* benches facing the church */}
+      {[0, 1, 2].map((i) => {
+        const a = (i / 3) * Math.PI * 2 + 1.1;
+        return (
+          <Bench
+            key={i}
+            position={[Math.cos(a) * 4.3, 0.74, Math.sin(a) * 4.3]}
+            rotY={-a + Math.PI / 2}
+          />
+        );
+      })}
+      <Planter position={[2.7, 0.74, 1.3]} rotY={0.5} />
+      <Planter position={[-2.5, 0.74, -1.7]} rotY={-0.8} />
+      {/* working clutter at the quayside */}
+      <Barrel position={[8.6, 0.74, 4.2]} />
+      <Barrel position={[9.1, 0.74, 4.7]} s={0.9} />
+      <Crates position={[-7.6, 0.74, 6.1]} rotY={0.6} />
+      <Crates position={[6.4, 0.74, -7.2]} rotY={-0.5} s={0.85} />
     </group>
   );
 }
