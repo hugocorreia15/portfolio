@@ -10,7 +10,7 @@ import { getTexture } from "@/lib/textures";
 
 const GLB_URL = "/models/moliceiro.glb";
 /** Tweak these if the Sketchfab model sits oddly (flip extraRotY to Math.PI if it sails backwards). */
-const GLB_TUNE = { length: 7.2, lift: 0.32, extraRotY: 0 };
+const GLB_TUNE = { length: 7.2, draft: 0.45, extraRotY: 0 };
 
 const MAX_SPEED = 9.5;
 const MAX_REVERSE = -3.4;
@@ -31,6 +31,29 @@ const _wakeCol = new THREE.Color();
 
 const WAKE_COUNT = 64;
 const WAKE_LIFE = 1.8;
+
+// one shared probe so every boat agrees on whether the GLB exists
+let glbProbe: Promise<boolean> | null = null;
+function probeGlb() {
+  glbProbe ??= fetch(GLB_URL, { method: "HEAD" })
+    .then((r) => r.ok)
+    .catch(() => false);
+  return glbProbe;
+}
+
+function useHasGlb() {
+  const [has, setHas] = useState(false);
+  useEffect(() => {
+    let on = true;
+    probeGlb().then((v) => {
+      if (on) setHas(v);
+    });
+    return () => {
+      on = false;
+    };
+  }, []);
+  return has;
+}
 
 const MOVE_CODES = new Set([
   "KeyW",
@@ -166,11 +189,13 @@ function GlbMoliceiro() {
     obj.position.sub(center);
     const wrapper = new THREE.Group();
     wrapper.add(obj);
-    // normalise: longest horizontal side becomes the boat length, sitting on the waterline
+    // normalise: longest horizontal side becomes the boat length, and the
+    // bounding-box bottom sits at a fixed draft — independent of mast height,
+    // which is why a fraction-of-height lift sank the hull
     if (size.z > size.x) obj.rotation.y = Math.PI / 2;
     const s = GLB_TUNE.length / Math.max(size.x, size.z);
     wrapper.scale.setScalar(s);
-    wrapper.position.y = size.y * s * GLB_TUNE.lift;
+    wrapper.position.y = (size.y * s) / 2 - GLB_TUNE.draft;
     wrapper.rotation.y = GLB_TUNE.extraRotY;
     return wrapper;
   }, [scene]);
@@ -269,16 +294,7 @@ export default function Moliceiro({
   const camPos = useRef(new THREE.Vector3(6, 10, 46));
   const camLook = useRef(new THREE.Vector3(0, 1, 30));
 
-  const [hasGlb, setHasGlb] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    fetch(GLB_URL, { method: "HEAD" })
-      .then((r) => !cancelled && setHasGlb(r.ok))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const hasGlb = useHasGlb();
 
   useEffect(() => {
     arrived.current = false;
@@ -649,13 +665,23 @@ export function AmbientBoats({ curve }: { curve: THREE.CatmullRomCurve3 }) {
     });
   });
 
+  const hasGlb = useHasGlb();
+  const boat = (accent: string, accent2: string) =>
+    hasGlb ? (
+      <Suspense fallback={<ProceduralMoliceiro accent={accent} accent2={accent2} />}>
+        <GlbMoliceiro />
+      </Suspense>
+    ) : (
+      <ProceduralMoliceiro accent={accent} accent2={accent2} />
+    );
+
   return (
     <>
       <group ref={boatA} scale={0.8}>
-        <ProceduralMoliceiro accent="#2f7fbf" accent2="#f2b705" />
+        {boat("#2f7fbf", "#f2b705")}
       </group>
       <group ref={boatB} scale={0.75}>
-        <ProceduralMoliceiro accent="#3f9d6b" accent2="#d6452e" />
+        {boat("#3f9d6b", "#d6452e")}
       </group>
     </>
   );

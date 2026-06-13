@@ -31,6 +31,8 @@ export function House({
           color={color}
           roughness={0.9}
           map={getTexture("plaster", 2, 1.4)}
+          bumpMap={getTexture("plaster", 2, 1.4)}
+          bumpScale={0.025}
         />
       </mesh>
       <mesh position-y={h + h * 0.3} rotation-y={Math.PI / 4} castShadow>
@@ -40,6 +42,8 @@ export function House({
           roughness={0.95}
           flatShading
           map={getTexture("roofTiles", 2, 1)}
+          bumpMap={getTexture("roofTiles", 2, 1)}
+          bumpScale={0.09}
         />
       </mesh>
       <mesh position={[0, h * 0.27, w * 0.44]}>

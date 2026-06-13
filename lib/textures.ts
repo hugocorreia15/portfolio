@@ -63,17 +63,26 @@ function draw(kind: TextureKind, ctx: CanvasRenderingContext2D, s: number) {
     const cw = s / cols;
     for (let r = 0; r < rows; r++) {
       const off = (r % 2) * (cw / 2);
-      ctx.fillStyle = "rgba(0,0,0,0.22)";
-      ctx.fillRect(0, r * rh, s, 2);
+      // deep shadow line where each row overlaps the one below
+      ctx.fillStyle = "rgba(0,0,0,0.34)";
+      ctx.fillRect(0, r * rh, s, 3);
       for (let c = -1; c <= cols; c++) {
         const x = c * cw + off;
-        const shade = 0.06 + hash(c + 9, r, 3) * 0.12;
+        const shade = 0.05 + hash(c + 9, r, 3) * 0.16;
+        // per-tile tone variation
         ctx.fillStyle = `rgba(0,0,0,${shade.toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(x + cw / 2, r * rh + rh, cw / 2, Math.PI, 0);
         ctx.fill();
-        ctx.fillStyle = "rgba(255,255,255,0.16)";
-        ctx.fillRect(x + 2, r * rh + 3, cw - 4, 2);
+        // curved tile shading: dark in the channels, light on the barrel
+        const grad = ctx.createLinearGradient(x, 0, x + cw, 0);
+        grad.addColorStop(0, "rgba(0,0,0,0.22)");
+        grad.addColorStop(0.5, "rgba(255,255,255,0.18)");
+        grad.addColorStop(1, "rgba(0,0,0,0.22)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(x, r * rh + 3, cw, rh - 3);
+        ctx.fillStyle = "rgba(255,255,255,0.2)";
+        ctx.fillRect(x + 2, r * rh + 4, cw - 4, 2);
       }
     }
   } else if (kind === "brick") {

@@ -9,6 +9,7 @@ const VERTEX = /* glsl */ `
   uniform float uTime;
   varying vec3 vWorldPos;
   varying vec3 vNormal;
+  varying float vH;
 
   // three layered waves; returns height, writes analytic gradient
   float waves(vec2 p, out vec2 grad) {
@@ -30,6 +31,7 @@ const VERTEX = /* glsl */ `
     vec2 grad;
     float h = waves(p.xy, grad);
     p.z += h * 0.34;
+    vH = h;
     // plane is rotated -90deg about X, so local (x, y) -> world (x, -z)
     vNormal = normalize(vec3(-grad.x * 0.34, 1.0, grad.y * 0.34));
     vec4 worldPos = modelMatrix * vec4(p, 1.0);
@@ -46,6 +48,7 @@ const FRAGMENT = /* glsl */ `
   uniform vec3 uSunDir;
   varying vec3 vWorldPos;
   varying vec3 vNormal;
+  varying float vH;
 
   float hash21(vec2 p) {
     p = fract(p * vec2(234.34, 435.345));
@@ -69,7 +72,12 @@ const FRAGMENT = /* glsl */ `
     vec2 rp = vWorldPos.xz * 0.55;
     float n1 = vnoise(rp + uTime * 0.35);
     float n2 = vnoise(rp * 2.3 - uTime * 0.27);
-    vec3 N = normalize(vNormal + vec3(n1 - 0.5, 0.0, n2 - 0.5) * 0.35);
+    float n3 = vnoise(rp * 5.1 + uTime * 0.6);
+    vec3 N = normalize(
+      vNormal +
+        vec3(n1 - 0.5, 0.0, n2 - 0.5) * 0.35 +
+        vec3(n3 - 0.5, 0.0, 0.5 - n3) * 0.16
+    );
 
     vec3 V = normalize(cameraPosition - vWorldPos);
     float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
@@ -83,10 +91,14 @@ const FRAGMENT = /* glsl */ `
     vec3 water = mix(deep, shallow, tonePatch * 0.8 + (vWorldPos.y) * 0.4);
     vec3 col = mix(water, sky, 0.10 + 0.5 * fresnel);
 
-    // sun glitter
+    // wave crests catch a touch of light
+    col += vec3(0.9, 0.95, 0.95) * smoothstep(0.45, 0.86, vH) * 0.09;
+
+    // sun glitter: tight sparkle + a broad soft sheen
     vec3 R = reflect(-uSunDir, N);
-    float spec = pow(max(dot(R, V), 0.0), 160.0);
-    col += vec3(1.0, 0.96, 0.85) * spec * 1.4;
+    float rv = max(dot(R, V), 0.0);
+    col += vec3(1.0, 0.96, 0.85) * pow(rv, 160.0) * 1.4;
+    col += vec3(1.0, 0.97, 0.9) * pow(rv, 24.0) * 0.16;
     // soft sparkles
     float sparkle = smoothstep(0.985, 1.0, vnoise(rp * 3.1 + uTime * 0.5));
     col += vec3(0.9) * sparkle * 0.18;

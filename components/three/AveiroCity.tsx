@@ -142,6 +142,8 @@ function QuaySide({
           color="#d9cba6"
           roughness={1}
           map={getTexture("calcada", 0.24, 0.24)}
+          bumpMap={getTexture("calcada", 0.24, 0.24)}
+          bumpScale={0.06}
         />
       </mesh>
       {buildings === "houses" &&
