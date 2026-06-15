@@ -2,6 +2,7 @@
 
 import { MAPS, type MapDef, type MapId } from "@/lib/maps";
 import { profile, type SectionId } from "@/data/profile";
+import TimeSlider from "@/components/ui/TimeSlider";
 
 function Chips({ items }: { items: string[] }) {
   return (
@@ -313,6 +314,8 @@ export default function Overlay({
           );
         })}
       </div>
+
+      <TimeSlider />
 
       {/* social links */}
       <nav className="pointer-events-auto absolute right-5 top-6 hidden gap-2 font-mono text-[11px] md:flex">

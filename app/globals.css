@@ -180,3 +180,41 @@ canvas:active {
   background: #1e4f8f;
   color: #faf5e9;
 }
+
+/* ---------- time-of-day slider ---------- */
+
+.day-range {
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 9999px;
+  background: linear-gradient(
+    90deg,
+    #1b2a4a 0%,
+    #e8a25f 25%,
+    #bcdcf0 50%,
+    #e8a25f 75%,
+    #1b2a4a 100%
+  );
+  outline: none;
+}
+
+.day-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #faf5e9;
+  border: 2px solid #1e4f8f;
+  box-shadow: 0 1px 4px rgba(22, 50, 74, 0.35);
+  cursor: pointer;
+}
+
+.day-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #faf5e9;
+  border: 2px solid #1e4f8f;
+  box-shadow: 0 1px 4px rgba(22, 50, 74, 0.35);
+  cursor: pointer;
+}

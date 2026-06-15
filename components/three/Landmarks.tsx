@@ -290,8 +290,7 @@ export default function Landmark({ port }: { port: PortDef }) {
       </group>
       {/* quayside dressing — lamps, seating, greenery and clutter on every island */}
       <group position-y={0.64}>
-        <Lamppost position={[-r * 0.64, 0, r * 0.48]} s={0.9} />
-        <Lamppost position={[r * 0.64, 0, r * 0.48]} s={0.9} />
+        <Lamppost position={[r * 0.62, 0, r * 0.5]} s={0.9} />
         <Bench position={[r * 0.52, 0, -r * 0.42]} rotY={-2.3} s={0.95} />
         <Bush position={[-r * 0.62, 0, -r * 0.4]} />
         <Bush position={[r * 0.5, 0, -r * 0.62]} s={0.9} />

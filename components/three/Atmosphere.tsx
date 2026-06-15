@@ -88,7 +88,7 @@ export function DayNightController() {
       <directionalLight
         ref={sun}
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[1024, 1024]}
         shadow-camera-left={-75}
         shadow-camera-right={75}
         shadow-camera-top={75}

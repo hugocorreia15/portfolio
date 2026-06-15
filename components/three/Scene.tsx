@@ -41,7 +41,7 @@ export default function Scene({
   return (
     <Canvas
       shadows="percentage"
-      dpr={[1, 1.75]}
+      dpr={[1, 1.5]}
       gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1 }}
       camera={{ position: [6, 10, 46], fov: 42, near: 0.5, far: 1600 }}
       className="!fixed inset-0"

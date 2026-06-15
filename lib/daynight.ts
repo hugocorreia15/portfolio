@@ -14,11 +14,12 @@ export const DAY = {
   night: 0, // 0 full day .. 1 deep night
   sunUp: 1, // clamp(sun elevation, 0, 1)
   dusk: 0, // warm-horizon factor
+  paused: false, // frozen by the time slider
 };
 
-/** Advance the clock and recompute the sun. Returns the raw elevation. */
+/** Advance the clock (unless paused) and recompute the sun. Returns elevation. */
 export function advanceDay(dt: number) {
-  DAY.t = (DAY.t + dt / CYCLE_SECONDS) % 1;
+  if (!DAY.paused) DAY.t = (DAY.t + dt / CYCLE_SECONDS) % 1;
   const a = (DAY.t - 0.25) * Math.PI * 2; // 0 at sunrise, π/2 at noon
   const elev = Math.sin(a);
   const along = Math.cos(a);
