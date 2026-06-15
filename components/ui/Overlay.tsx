@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { MAPS, type MapDef, type MapId } from "@/lib/maps";
 import { profile, type SectionId } from "@/data/profile";
+import { DAY } from "@/lib/daynight";
 import TimeSlider from "@/components/ui/TimeSlider";
 
 function Chips({ items }: { items: string[] }) {
@@ -270,17 +272,40 @@ export default function Overlay({
   const docked = dockedIndex !== null ? map.ports[dockedIndex] : null;
   const Content = docked ? SECTION_CONTENT[docked.id] : null;
 
+  // canvas-floating text (header, coords, credits) lightens at night so it
+  // stays readable over the dark scene; panels keep their own colours.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const n = DAY.night;
+      const r = Math.round(22 + (228 - 22) * n);
+      const g = Math.round(50 + (237 - 50) * n);
+      const b = Math.round(74 + (246 - 74) * n);
+      const el = rootRef.current;
+      if (el) {
+        el.style.setProperty("--ink-1", `rgb(${r}, ${g}, ${b})`);
+        el.style.setProperty("--ink-2", `rgba(${r}, ${g}, ${b}, 0.62)`);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   return (
-    <div className="pointer-events-none absolute inset-0 z-40 text-ink">
+    <div ref={rootRef} className="pointer-events-none absolute inset-0 z-40 text-ink">
       {/* header */}
       <header className="absolute left-5 top-5 max-w-[60vw] md:left-8 md:top-7">
-        <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-ink/50 md:text-[11px]">
+        <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-[color:var(--ink-2)] md:text-[11px]">
           Ria de Aveiro · Portfólio
         </p>
-        <h1 className="mt-1 font-display text-3xl leading-none text-ink md:text-4xl">
+        <h1 className="mt-1 font-display text-3xl leading-none text-[color:var(--ink-1)] md:text-4xl">
           {profile.name}
         </h1>
-        <p className="mt-1.5 text-sm text-ink/65 md:text-[15px]">{profile.title}</p>
+        <p className="mt-1.5 text-sm text-[color:var(--ink-2)] md:text-[15px]">
+          {profile.title}
+        </p>
       </header>
 
       {/* map switch — the imagined island or the real Aveiro (coming soon) */}
@@ -337,29 +362,17 @@ export default function Overlay({
       </nav>
 
       {/* coordinates, like a chart plotter */}
-      <p className="absolute bottom-5 left-5 hidden font-mono text-[10px] tracking-wider text-ink/40 md:block">
+      <p className="absolute bottom-5 left-5 hidden font-mono text-[10px] tracking-wider text-[color:var(--ink-2)] md:block">
         40.6405° N, 8.6538° W — RIA DE AVEIRO
       </p>
 
-      {/* model credits (CC-BY attribution — full table in the README) */}
-      <p className="pointer-events-auto absolute bottom-5 right-5 hidden font-mono text-[10px] text-ink/40 md:block">
-        moliceiro:{" "}
-        <a
-          href="https://skfb.ly/ouOAW"
-          target="_blank"
-          rel="noreferrer"
-          className="underline-offset-2 hover:text-azulejo hover:underline"
-        >
-          ricardo.turmas
-        </a>{" "}
-        ·{" "}
-        <a
-          href="/credits"
-          className="underline-offset-2 hover:text-azulejo hover:underline"
-        >
-          3D credits ↗
-        </a>
-      </p>
+      {/* link to the 3D model credits page */}
+      <a
+        href="/credits"
+        className="pointer-events-auto absolute bottom-5 right-5 hidden font-mono text-[10px] text-[color:var(--ink-2)] underline-offset-2 transition-opacity hover:opacity-80 hover:underline md:block"
+      >
+        3D credits ↗
+      </a>
 
       {/* sailing toast */}
       {sailing && targetIndex !== null && (

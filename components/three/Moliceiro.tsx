@@ -77,14 +77,13 @@ const WAKE_VS = /* glsl */ `
 `;
 
 const WAKE_FS = /* glsl */ `
-  precision mediump float;
   varying float vAlpha;
   varying float vSide;
   void main() {
-    float edge = smoothstep(1.0, 0.2, abs(vSide)); // soft foam edges
-    float a = vAlpha * edge * 0.78;
+    float edge = smoothstep(1.0, 0.15, abs(vSide)); // soft foam edges
+    float a = vAlpha * edge * 0.95;
     if (a < 0.01) discard;
-    gl_FragColor = vec4(0.86, 0.93, 0.97, a);
+    gl_FragColor = vec4(0.93, 0.97, 1.0, a);
   }
 `;
 
@@ -139,12 +138,12 @@ function WakeTrail({
     const g = geo;
     const h = hist.current;
     if (!t || !h) return;
-    const fade = Math.min(dt, 0.05) * 0.4; // time-based, not per-frame
+    const fade = Math.min(dt, 0.05) * 0.3; // time-based, not per-frame
     t.getWorldPosition(_wp);
     const dx = _wp.x - last.current.x;
     const dz = _wp.z - last.current.z;
     const moved = Math.hypot(dx, dz);
-    if (moved > 0.3) {
+    if (moved > 0.22) {
       for (let i = segments - 1; i > 0; i--) {
         const a = h[i];
         const b = h[i - 1];
@@ -167,10 +166,10 @@ function WakeTrail({
       const s = h[i];
       s.on = Math.max(0, s.on - fade); // dissipate over time (frame-rate independent)
       const tt = i / (segments - 1);
-      const w = width * (0.2 + tt * 1.05); // narrow at stern, spreading astern
+      const w = width * (0.4 + tt * 0.95); // spreading astern
       const a = s.on * (1 - tt) * (1 - tt);
-      pos.setXYZ(i * 2, s.x + s.nx * w, 0.07, s.z + s.nz * w);
-      pos.setXYZ(i * 2 + 1, s.x - s.nx * w, 0.07, s.z - s.nz * w);
+      pos.setXYZ(i * 2, s.x + s.nx * w, 0.16, s.z + s.nz * w);
+      pos.setXYZ(i * 2 + 1, s.x - s.nx * w, 0.16, s.z - s.nz * w);
       al.setX(i * 2, a);
       al.setX(i * 2 + 1, a);
     }
@@ -186,6 +185,7 @@ function WakeTrail({
         fragmentShader={WAKE_FS}
         transparent
         depthWrite={false}
+        depthTest={false}
       />
     </mesh>
   );

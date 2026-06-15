@@ -10,6 +10,12 @@
   --font-mono: var(--font-geist-mono);
 }
 
+:root {
+  /* canvas-floating UI ink, updated per-frame by the day-night cycle */
+  --ink-1: #16324a;
+  --ink-2: rgba(22, 50, 74, 0.62);
+}
+
 html,
 body {
   height: 100%;
