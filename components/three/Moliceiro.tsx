@@ -82,7 +82,7 @@ const WAKE_FS = /* glsl */ `
   varying float vSide;
   void main() {
     float edge = smoothstep(1.0, 0.2, abs(vSide)); // soft foam edges
-    float a = vAlpha * edge * 0.6;
+    float a = vAlpha * edge * 0.78;
     if (a < 0.01) discard;
     gl_FragColor = vec4(0.86, 0.93, 0.97, a);
   }
@@ -134,11 +134,12 @@ function WakeTrail({
   }
   const last = useRef(new THREE.Vector3());
 
-  useFrame(() => {
+  useFrame((_, dt) => {
     const t = target.current;
     const g = geo;
     const h = hist.current;
     if (!t || !h) return;
+    const fade = Math.min(dt, 0.05) * 0.4; // time-based, not per-frame
     t.getWorldPosition(_wp);
     const dx = _wp.x - last.current.x;
     const dz = _wp.z - last.current.z;
@@ -164,7 +165,7 @@ function WakeTrail({
     const al = g.getAttribute("aAlpha") as THREE.BufferAttribute;
     for (let i = 0; i < segments; i++) {
       const s = h[i];
-      s.on *= 0.975; // dissipate over time
+      s.on = Math.max(0, s.on - fade); // dissipate over time (frame-rate independent)
       const tt = i / (segments - 1);
       const w = width * (0.2 + tt * 1.05); // narrow at stern, spreading astern
       const a = s.on * (1 - tt) * (1 - tt);
