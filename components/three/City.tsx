@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { BRIDGE_TS, CANAL, mulberry32 } from "@/lib/ports";
 import { getSurface, getTexture } from "@/lib/textures";
 import { OptionalGlb, useModelFile } from "@/components/three/PlacedModel";
-import { DAY } from "@/lib/daynight";
+import { DAY, useIsNight } from "@/lib/daynight";
 
 // ── GLB foliage & lighting packs ────────────────────────────────────────────
 const TREE_GLB = "/models/low_poly_forest_tree_pack.glb";
@@ -231,6 +231,7 @@ export function Lamppost({
   });
 
   const hasGlb = useModelFile(LAMP_GLB);
+  const night = useIsNight();
   const glowScale = 3 * Math.sqrt(power);
 
   return (
@@ -256,7 +257,7 @@ export function Lamppost({
           toneMapped={false}
         />
       </sprite>
-      {light && (
+      {light && night && (
         <pointLight
           ref={lamp}
           position-y={2.8}

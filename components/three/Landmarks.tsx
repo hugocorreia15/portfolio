@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { DAY } from "@/lib/daynight";
+import { BEACON, DAY } from "@/lib/daynight";
 import type { PortDef } from "@/lib/ports";
+
+const _bd = new THREE.Vector3();
+const _bq = new THREE.Quaternion();
 import {
   Barrel,
   Bench,
@@ -149,13 +152,38 @@ function Lighthouse() {
     if (spot.current && spotTarget.current) spot.current.target = spotTarget.current;
   }, []);
 
+  // a slender cone whose alpha fades from the lantern (apex) to nothing at the
+  // far end — a soft volumetric beam with no hard cap
+  const beamGeo = useMemo(() => {
+    const g = new THREE.ConeGeometry(1.45, BEAM_LEN, 30, 1, true);
+    const p = g.attributes.position;
+    const col = new Float32Array(p.count * 4);
+    for (let i = 0; i < p.count; i++) {
+      const tt = (p.getY(i) + BEAM_LEN / 2) / BEAM_LEN; // 0 far .. 1 at the lantern
+      const a = Math.pow(Math.max(0, tt), 1.6);
+      col[i * 4] = 1;
+      col[i * 4 + 1] = 0.95;
+      col[i * 4 + 2] = 0.8;
+      col[i * 4 + 3] = a;
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(col, 4));
+    return g;
+  }, []);
+
   useFrame((state, dt) => {
     const n = DAY.night;
-    if (beacon.current) beacon.current.rotation.y += dt * 0.85; // the sweep
-    const flick = 0.78 + 0.22 * Math.sin(state.clock.elapsedTime * 3.3);
-    if (beam.current) beam.current.opacity = (0.05 + n * 0.55) * flick;
+    const flick = 0.85 + 0.15 * Math.sin(state.clock.elapsedTime * 3.3);
+    if (beacon.current) {
+      beacon.current.rotation.y += dt * 0.7; // the sweep
+      // publish the beam to the water shader (world position + heading)
+      beacon.current.getWorldPosition(BEACON.pos);
+      _bd.set(-1, 0, 0).applyQuaternion(beacon.current.getWorldQuaternion(_bq));
+      BEACON.dir = Math.atan2(_bd.x, _bd.z);
+      BEACON.on = n;
+    }
+    if (beam.current) beam.current.opacity = (0.03 + n * 0.4) * flick;
     if (lantern.current) lantern.current.emissiveIntensity = 0.9 + n * 3.2;
-    if (glow.current) glow.current.opacity = 0.22 + n * 0.6;
+    if (glow.current) glow.current.opacity = 0.18 + n * 0.55;
     if (spot.current) spot.current.intensity = n * 26;
   });
 
@@ -265,11 +293,10 @@ function Lighthouse() {
             intensity={0}
             color="#fff2cf"
           />
-          <mesh position={[-BEAM_LEN / 2, 0, 0]} rotation-z={-Math.PI / 2}>
-            <coneGeometry args={[1.35, BEAM_LEN, 22, 1, true]} />
+          <mesh geometry={beamGeo} position={[-BEAM_LEN / 2, 0, 0]} rotation-z={-Math.PI / 2}>
             <meshBasicMaterial
               ref={beam}
-              color="#fff4cf"
+              vertexColors
               transparent
               opacity={0}
               side={THREE.DoubleSide}

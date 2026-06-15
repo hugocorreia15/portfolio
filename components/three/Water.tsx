@@ -3,7 +3,7 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { DAY } from "@/lib/daynight";
+import { BEACON, DAY } from "@/lib/daynight";
 import { getWaterRipples } from "@/lib/textures";
 
 const VERTEX = /* glsl */ `
@@ -50,6 +50,9 @@ const FRAGMENT = /* glsl */ `
   uniform vec3 uSunDir;
   uniform float uNight;
   uniform sampler2D uRipples;
+  uniform vec3 uBeaconPos;
+  uniform float uBeaconDir;
+  uniform float uBeaconOn;
   varying vec3 vWorldPos;
   varying vec3 vNormal;
   varying float vH;
@@ -117,6 +120,18 @@ const FRAGMENT = /* glsl */ `
     col += vec3(0.55, 0.66, 0.92) * pow(rv, 90.0) * uNight * 0.6;
     col += vec3(0.7, 0.8, 1.0) * sparkle * uNight * 0.1;
 
+    // the lighthouse beam glancing across the water — a warm streak that sweeps
+    // along the beam's heading and fades with distance, breaking up on ripples
+    if (uBeaconOn > 0.001) {
+      vec2 toF = vWorldPos.xz - uBeaconPos.xz;
+      float bd = length(toF);
+      vec2 dir = vec2(sin(uBeaconDir), cos(uBeaconDir));
+      float al = dot(toF / max(bd, 0.001), dir);
+      float streak = smoothstep(0.984, 1.0, al) * exp(-bd * 0.022);
+      float shimmer = 0.7 + 0.3 * (r1.x + r2.y);
+      col += vec3(1.0, 0.93, 0.72) * streak * shimmer * uBeaconOn * 1.6;
+    }
+
     gl_FragColor = vec4(col, 1.0);
     #include <fog_fragment>
   }
@@ -131,6 +146,9 @@ export default function Water() {
       uSunDir: { value: DAY.sunDir.clone() },
       uNight: { value: 0 },
       uRipples: { value: getWaterRipples() },
+      uBeaconPos: { value: new THREE.Vector3() },
+      uBeaconDir: { value: 0 },
+      uBeaconOn: { value: 0 },
     }),
     []
   );
@@ -141,6 +159,9 @@ export default function Water() {
       u.uTime.value = state.clock.elapsedTime;
       u.uSunDir.value.copy(DAY.sunDir);
       u.uNight.value = DAY.night;
+      u.uBeaconPos.value.copy(BEACON.pos);
+      u.uBeaconDir.value = BEACON.dir;
+      u.uBeaconOn.value = BEACON.on;
     }
   });
 

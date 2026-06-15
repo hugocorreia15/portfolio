@@ -4,7 +4,7 @@ import { type ComponentRef, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Sky } from "@react-three/drei";
 import * as THREE from "three";
-import { DAY, advanceDay } from "@/lib/daynight";
+import { DAY, advanceDay, setNight } from "@/lib/daynight";
 import { mulberry32 } from "@/lib/ports";
 import { getTexture } from "@/lib/textures";
 
@@ -45,6 +45,7 @@ export function DayNightController() {
 
     const elev = advanceDay(Math.min(dt, 0.05));
     const { night, sunUp: up, dusk } = DAY;
+    setNight(night > 0.06); // gate the lamp lights to night-time only
     const sunPos = DAY.sunDir.clone().multiplyScalar(420);
 
     const skyMat = sky.current?.material as THREE.ShaderMaterial | undefined;
@@ -68,19 +69,21 @@ export function DayNightController() {
     }
     if (moon.current) {
       moon.current.position.set(-sunPos.x, Math.abs(sunPos.y) * 0.5 + 80, -sunPos.z);
-      moon.current.intensity = night * 0.4;
+      moon.current.intensity = night * 0.5;
     }
     if (hemi.current) {
-      hemi.current.intensity = THREE.MathUtils.lerp(0.16, 0.5, up) + night * 0.08;
+      // much dimmer ambient fill at night so the scene (and the boats) go dark
+      // away from the lamps, the moon and the lighthouse beam
+      hemi.current.intensity = THREE.MathUtils.lerp(0.05, 0.5, up) + night * 0.03;
       hemi.current.color.copy(C_DAY_SKY.clone().lerp(C_NIGHT_SKY, night));
     }
     if (ambient.current) {
-      ambient.current.intensity = THREE.MathUtils.lerp(0.14, 0.24, up) + night * 0.06;
+      ambient.current.intensity = THREE.MathUtils.lerp(0.04, 0.24, up) + night * 0.02;
       ambient.current.color.copy(C_MOON.clone().lerp(C_SUN, up));
     }
 
     gl.toneMappingExposure = THREE.MathUtils.lerp(0.5, 1.05, up) + dusk * 0.12;
-    scene.environmentIntensity = THREE.MathUtils.lerp(0.1, 0.7, up);
+    scene.environmentIntensity = THREE.MathUtils.lerp(0.04, 0.7, up);
 
     // place the discs on a capped-elevation dome so they stay in the sky view
     // instead of climbing straight overhead at noon/midnight
