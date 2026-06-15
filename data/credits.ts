@@ -42,4 +42,13 @@ export const ASSET_CREDITS: AssetCredit[] = [
     licenseUrl: "http://creativecommons.org/licenses/by-nc-sa/4.0/",
     role: "The canal bridges",
   },
+  {
+    name: "Old Street Lamp Pack",
+    author: "Bailey123704",
+    authorUrl: "https://sketchfab.com/Bailey123704",
+    modelUrl: "https://skfb.ly/pKEKX",
+    license: "CC BY 4.0",
+    licenseUrl: "http://creativecommons.org/licenses/by/4.0/",
+    role: "Quayside lampposts",
+  },
 ];

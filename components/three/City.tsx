@@ -1,11 +1,101 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { type RefObject, Suspense, useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { BRIDGE_TS, CANAL, mulberry32 } from "@/lib/ports";
 import { getSurface, getTexture } from "@/lib/textures";
-import { OptionalGlb } from "@/components/three/PlacedModel";
+import { OptionalGlb, useModelFile } from "@/components/three/PlacedModel";
+import { DAY } from "@/lib/daynight";
+
+// ── GLB foliage & lighting packs ────────────────────────────────────────────
+const TREE_GLB = "/models/low_poly_forest_tree_pack.glb";
+const LAMP_GLB = "/models/old_street_lamp_pack.glb";
+
+// each pack bundles several items in one scene; isolate one by WORLD POSITION,
+// which is robust to GLTFLoader sanitising node names (it strips the dots the
+// lamp meshes carry). Lamp = the middle of the three-lamp row (x≈0); the forest
+// holds two vertically-aligned trees (A at x≈-13.5, B at x≈-32) and we reuse A's
+// crown alone as a bush.
+type KeepFn = (name: string, center: THREE.Vector3) => boolean;
+const KEEP_LAMP: KeepFn = (_n, c) => Math.abs(c.x) < 1.1;
+const KEEP_TREE_A: KeepFn = (_n, c) => Math.abs(c.x + 13.5) < 5 && Math.abs(c.z + 48) < 5;
+const KEEP_TREE_B: KeepFn = (_n, c) => Math.abs(c.x + 32) < 5 && Math.abs(c.z + 48) < 5;
+const KEEP_BUSH: KeepFn = (n, c) => n.includes("Branches_02") && Math.abs(c.z + 48) < 5;
+
+/** Clone a GLB scene, keep only the meshes the predicate accepts (by name and
+ *  world-space centre), drop them to the floor and scale to `height` tall. */
+function extractPart(scene: THREE.Object3D, keep: KeepFn, height: number) {
+  const obj = scene.clone(true);
+  obj.updateMatrixWorld(true);
+  const drop: THREE.Object3D[] = [];
+  const c = new THREE.Vector3();
+  const b = new THREE.Box3();
+  obj.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    b.setFromObject(mesh);
+    b.getCenter(c);
+    if (keep(o.name, c)) {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    } else {
+      drop.push(o);
+    }
+  });
+  drop.forEach((o) => o.removeFromParent());
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  obj.position.x -= center.x;
+  obj.position.z -= center.z;
+  obj.position.y -= box.min.y; // sit the base on the ground
+  const wrapper = new THREE.Group();
+  wrapper.add(obj);
+  wrapper.scale.setScalar(height / Math.max(size.y, 0.001));
+  return wrapper;
+}
+
+// extract each part once per loaded scene, then clone the small result per use
+const partCache = new WeakMap<THREE.Object3D, Map<string, THREE.Group>>();
+function getTemplate(scene: THREE.Object3D, key: string, keep: KeepFn, height: number) {
+  let m = partCache.get(scene);
+  if (!m) {
+    m = new Map();
+    partCache.set(scene, m);
+  }
+  let tpl = m.get(key);
+  if (!tpl) {
+    tpl = extractPart(scene, keep, height);
+    m.set(key, tpl);
+  }
+  return tpl;
+}
+
+/** One isolated tree/bush from the forest GLB, scaled and spun for variety. */
+function GlbForestItem({
+  cacheKey,
+  keep,
+  height,
+  rotY,
+}: {
+  cacheKey: string;
+  keep: KeepFn;
+  height: number;
+  rotY: number;
+}) {
+  const { scene } = useGLTF(TREE_GLB);
+  const obj = useMemo(
+    () => getTemplate(scene, cacheKey, keep, 1).clone(true),
+    [scene, cacheKey, keep]
+  );
+  return (
+    <group rotation-y={rotY} scale={height}>
+      <primitive object={obj} />
+    </group>
+  );
+}
 
 const PASTELS = ["#f4d35e", "#ee6c4d", "#3d8ea9", "#e8a87c", "#9bc4bc", "#f2939b", "#d9b26f"];
 
@@ -42,8 +132,31 @@ export function House({
   );
 }
 
-/** Broadleaf (clustered) or occasional pine, varied per position. */
+/** A low-poly forest tree from the GLB pack; procedural foliage is the fallback
+ *  until the model loads (or if it isn't downloaded). */
 export function Tree({ position, s = 1 }: { position: [number, number, number]; s?: number }) {
+  const hasGlb = useModelFile(TREE_GLB);
+  const { rotY, typeB } = useMemo(() => {
+    const r = mulberry32(Math.round(position[0] * 53.1 + position[2] * 17.7 + 11));
+    return { rotY: r() * Math.PI * 2, typeB: r() > 0.5 };
+  }, [position]);
+  if (!hasGlb) return <ProceduralTree position={position} s={s} />;
+  return (
+    <group position={position}>
+      <Suspense fallback={<ProceduralTree position={[0, 0, 0]} s={s} />}>
+        <GlbForestItem
+          cacheKey={typeB ? "treeB" : "treeA"}
+          keep={typeB ? KEEP_TREE_B : KEEP_TREE_A}
+          height={2.8 * s}
+          rotY={rotY}
+        />
+      </Suspense>
+    </group>
+  );
+}
+
+/** Procedural broadleaf (clustered) or occasional pine — the fallback foliage. */
+function ProceduralTree({ position, s = 1 }: { position: [number, number, number]; s?: number }) {
   const { trunkH, lean, blobs } = useMemo(() => {
     const rnd = mulberry32(Math.round(position[0] * 53.1 + position[2] * 17.7 + 11));
     const lean = (rnd() - 0.5) * 0.1;
@@ -98,13 +211,98 @@ export function Lamppost({
   position,
   s = 1,
   light = true,
+  power = 1,
 }: {
   position: [number, number, number];
   s?: number;
   light?: boolean;
+  power?: number;
 }) {
+  // the lantern only burns at night — by day the glass is plain with no glow or
+  // cast light, so the lampposts stay dark while the sun is up
+  const lantern = useRef<THREE.MeshStandardMaterial>(null);
+  const glow = useRef<THREE.SpriteMaterial>(null);
+  const lamp = useRef<THREE.PointLight>(null);
+  useFrame(() => {
+    const n = DAY.night;
+    if (lantern.current) lantern.current.emissiveIntensity = n * 3.4;
+    if (glow.current) glow.current.opacity = n * 0.95;
+    if (lamp.current) lamp.current.intensity = n * 42 * power;
+  });
+
+  const hasGlb = useModelFile(LAMP_GLB);
+  const glowScale = 3 * Math.sqrt(power);
+
   return (
     <group position={position} scale={s}>
+      {hasGlb ? (
+        <Suspense fallback={<ProceduralLampBody lanternRef={lantern} />}>
+          <GlbLamp />
+        </Suspense>
+      ) : (
+        <ProceduralLampBody lanternRef={lantern} />
+      )}
+      {/* the light coming out: yellow halo + a point light that pools on the ground */}
+      <sprite position-y={2.75} scale={[glowScale, glowScale, 1]}>
+        <spriteMaterial
+          ref={glow}
+          map={getTexture("foam")}
+          color="#ffce2f"
+          transparent
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          fog={false}
+          toneMapped={false}
+        />
+      </sprite>
+      {light && (
+        <pointLight
+          ref={lamp}
+          position-y={2.8}
+          color="#ffd166"
+          intensity={0}
+          distance={22 * power}
+          decay={1.15}
+        />
+      )}
+    </group>
+  );
+}
+
+function GlbLamp() {
+  const { scene } = useGLTF(LAMP_GLB);
+  const obj = useMemo(() => getTemplate(scene, "lampMid", KEEP_LAMP, 3.1).clone(true), [scene]);
+  // the lamp's glass heads are the "Material.002" mesh (dots stripped by the
+  // loader → "Material002"); give this instance its own emissive copy so the
+  // heads themselves glow at night.
+  const glass = useRef<THREE.MeshStandardMaterial | null>(null);
+  useEffect(() => {
+    obj.traverse((m) => {
+      const mesh = m as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.name.includes("Material002")) return;
+      const mat = (mesh.material as THREE.MeshStandardMaterial).clone();
+      mat.emissive = new THREE.Color("#ffcf6b");
+      mat.emissiveIntensity = 0;
+      mat.toneMapped = false;
+      mesh.material = mat;
+      glass.current = mat;
+    });
+  }, [obj]);
+  useFrame(() => {
+    if (glass.current) glass.current.emissiveIntensity = DAY.night * 2.8;
+  });
+  return <primitive object={obj} />;
+}
+
+/** Procedural iron lamppost body — the fallback when the lamp GLB isn't loaded. */
+function ProceduralLampBody({
+  lanternRef,
+}: {
+  lanternRef: RefObject<THREE.MeshStandardMaterial | null>;
+}) {
+  return (
+    <>
       <mesh position-y={0.1} castShadow>
         <cylinderGeometry args={[0.18, 0.24, 0.2, 8]} />
         <meshStandardMaterial color="#21242b" roughness={0.6} metalness={0.3} />
@@ -117,9 +315,10 @@ export function Lamppost({
       <mesh position-y={2.4}>
         <boxGeometry args={[0.3, 0.44, 0.3]} />
         <meshStandardMaterial
+          ref={lanternRef}
           color="#ffe24f"
           emissive="#ffcc2a"
-          emissiveIntensity={3.2}
+          emissiveIntensity={0}
           toneMapped={false}
         />
       </mesh>
@@ -135,27 +334,11 @@ export function Lamppost({
           <meshStandardMaterial color="#23262e" roughness={0.5} metalness={0.4} />
         </mesh>
       ))}
-      {/* the light coming out: yellow glow + a strong point light that pools on the ground */}
-      <sprite position-y={2.4} scale={[2, 2, 1]}>
-        <spriteMaterial
-          map={getTexture("foam")}
-          color="#ffce2f"
-          transparent
-          opacity={0.95}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          fog={false}
-          toneMapped={false}
-        />
-      </sprite>
-      {light && (
-        <pointLight position-y={2.45} color="#ffd166" intensity={18} distance={14} decay={1.6} />
-      )}
       <mesh position-y={2.72} castShadow>
         <coneGeometry args={[0.26, 0.22, 4]} />
         <meshStandardMaterial color="#23262e" roughness={0.5} />
       </mesh>
-    </group>
+    </>
   );
 }
 
@@ -270,8 +453,25 @@ export function Planter({
   );
 }
 
-/** Low foliage bush. */
+/** A leafy bush — the forest GLB's crown sat low; procedural blobs are fallback. */
 export function Bush({ position, s = 1 }: { position: [number, number, number]; s?: number }) {
+  const hasGlb = useModelFile(TREE_GLB);
+  const rotY = useMemo(
+    () => mulberry32(Math.round(position[0] * 41 + position[2] * 23 + 9))() * Math.PI * 2,
+    [position]
+  );
+  if (!hasGlb) return <ProceduralBush position={position} s={s} />;
+  return (
+    <group position={position}>
+      <Suspense fallback={<ProceduralBush position={[0, 0, 0]} s={s} />}>
+        <GlbForestItem cacheKey="bush" keep={KEEP_BUSH} height={0.9 * s} rotY={rotY} />
+      </Suspense>
+    </group>
+  );
+}
+
+/** Low procedural foliage bush — the fallback. */
+function ProceduralBush({ position, s = 1 }: { position: [number, number, number]; s?: number }) {
   const blobs = useMemo(() => {
     const rnd = mulberry32(Math.round(position[0] * 41 + position[2] * 23 + 9));
     const greens = ["#4f8a45", "#5d9c50", "#69ad5b"];
@@ -474,11 +674,11 @@ function MainIsland() {
       {bushes.map((b, i) => (
         <Bush key={i} position={b.position} s={b.s} />
       ))}
-      {/* lampposts ringing the church plaza */}
+      {/* lampposts ringing the church plaza — brighter, wider pools on the island */}
       {[0, 1, 2, 3].map((i) => {
         const a = (i / 4) * Math.PI * 2 + 0.4;
         return (
-          <Lamppost key={i} position={[Math.cos(a) * 5.2, 0.74, Math.sin(a) * 5.2]} />
+          <Lamppost key={i} position={[Math.cos(a) * 5.2, 0.74, Math.sin(a) * 5.2]} power={1.7} />
         );
       })}
       {/* benches facing the church */}

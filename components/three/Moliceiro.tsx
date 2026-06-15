@@ -64,86 +64,85 @@ const _normal = new THREE.Vector3();
 const _scan = new THREE.Vector3();
 const _wp = new THREE.Vector3();
 
-const WAKE_VS = /* glsl */ `
-  attribute float aAlpha;
-  attribute float aSide;
-  varying float vAlpha;
-  varying float vSide;
-  void main() {
-    vAlpha = aAlpha;
-    vSide = aSide;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const WAKE_FS = /* glsl */ `
-  varying float vAlpha;
-  varying float vSide;
-  void main() {
-    float edge = smoothstep(1.0, 0.15, abs(vSide)); // soft foam edges
-    float a = vAlpha * edge * 0.95;
-    if (a < 0.01) discard;
-    gl_FragColor = vec4(0.93, 0.97, 1.0, a);
-  }
-`;
+// the same three-wave surface the Water shader displaces its plane by, evaluated
+// on the CPU so foam can ride the swell exactly. Water mesh sits at y = -0.02 and
+// is rotated so local (x, y) maps to world (x, -z); amplitude scaled by 0.34.
+function waterHeight(x: number, z: number, t: number) {
+  const w1 = Math.sin(x * 0.16 + t * 0.8);
+  const w2 = Math.sin(-z * 0.23 - t * 0.6);
+  const w3 = Math.sin((x - z) * 0.11 + t * 0.45);
+  return -0.02 + (0.42 * w1 + 0.26 * w2 + 0.18 * w3) * 0.34;
+}
 
 /**
- * A flat foam ribbon that trails behind a moving boat — the line the hull
- * cuts through the water — narrow at the stern, spreading and fading astern.
+ * The boat wake — a foam fan emitted from the bow and laid along the boat's path
+ * history, so foam runs the whole length of the hull (under and alongside it)
+ * and trails astern as one continuous wake. Re-seated on the live water surface
+ * every frame so it rolls with the swell; each rib has 5 vertices — a bright
+ * core with two diverging Kelvin arms — dissolving astern with a churn shimmer.
+ * Plain meshBasicMaterial so it always renders.
  */
 function WakeTrail({
   target,
-  width = 2.4,
-  segments = 48,
+  width = 1.0,
+  emit = 2.8,
+  segments = 64,
 }: {
   target: RefObject<THREE.Group | null>;
   width?: number;
+  emit?: number;
   segments?: number;
 }) {
+  const RIB = 5; // outerL, armL, core, armR, outerR
   const geo = useMemo(() => {
     const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(segments * 6), 3));
-    g.setAttribute("aAlpha", new THREE.BufferAttribute(new Float32Array(segments * 2), 1));
-    const side = new Float32Array(segments * 2);
-    for (let i = 0; i < segments; i++) {
-      side[i * 2] = 1;
-      side[i * 2 + 1] = -1;
-    }
-    g.setAttribute("aSide", new THREE.BufferAttribute(side, 1));
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(segments * RIB * 3), 3));
+    g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(segments * RIB * 4), 4));
     const idx: number[] = [];
     for (let i = 0; i < segments - 1; i++) {
-      const a = i * 2;
-      idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+      const a = i * RIB;
+      const b = (i + 1) * RIB;
+      for (let k = 0; k < RIB - 1; k++) {
+        idx.push(a + k, b + k, a + k + 1, a + k + 1, b + k, b + k + 1);
+      }
     }
     g.setIndex(idx);
     return g;
   }, [segments]);
 
-  const hist = useRef<
-    Array<{ x: number; z: number; nx: number; nz: number; on: number }> | null
-  >(null);
+  const hist = useRef<Array<{ x: number; z: number; nx: number; nz: number; on: number }> | null>(
+    null
+  );
   if (hist.current == null) {
-    hist.current = Array.from({ length: segments }, () => ({
-      x: 0,
-      z: 0,
-      nx: 0,
-      nz: 1,
-      on: 0,
-    }));
+    hist.current = Array.from({ length: segments }, () => ({ x: 0, z: 0, nx: 1, nz: 0, on: 0 }));
   }
   const last = useRef(new THREE.Vector3());
+  const seeded = useRef(false);
 
-  useFrame((_, dt) => {
+  useFrame((state, dt) => {
     const t = target.current;
-    const g = geo;
     const h = hist.current;
     if (!t || !h) return;
-    const fade = Math.min(dt, 0.05) * 0.3; // time-based, not per-frame
+    const time = state.clock.elapsedTime;
     t.getWorldPosition(_wp);
-    const dx = _wp.x - last.current.x;
-    const dz = _wp.z - last.current.z;
+    // emit from the bow, so the foam runs the length of the hull (under and
+    // alongside it) before trailing astern as one continuous wake
+    const px = _wp.x + Math.sin(t.rotation.y) * emit;
+    const pz = _wp.z + Math.cos(t.rotation.y) * emit;
+
+    if (!seeded.current) {
+      for (const s of h) {
+        s.x = px;
+        s.z = pz;
+      }
+      last.current.set(px, 0, pz);
+      seeded.current = true;
+    }
+
+    const dx = px - last.current.x;
+    const dz = pz - last.current.z;
     const moved = Math.hypot(dx, dz);
-    if (moved > 0.22) {
+    if (moved > 0.26) {
       for (let i = segments - 1; i > 0; i--) {
         const a = h[i];
         const b = h[i - 1];
@@ -153,40 +152,58 @@ function WakeTrail({
         a.nz = b.nz;
         a.on = b.on;
       }
-      h[0].x = _wp.x;
-      h[0].z = _wp.z;
-      h[0].nx = -dz / moved;
+      h[0].x = px;
+      h[0].z = pz;
+      h[0].nx = -dz / moved; // unit normal to the path
       h[0].nz = dx / moved;
       h[0].on = 1;
-      last.current.copy(_wp);
+      last.current.set(px, 0, pz);
     }
-    const pos = g.getAttribute("position") as THREE.BufferAttribute;
-    const al = g.getAttribute("aAlpha") as THREE.BufferAttribute;
+
+    const fade = Math.min(dt, 0.05) * 0.16; // slower dissipation — the wake lingers longer
+    const pos = geo.getAttribute("position") as THREE.BufferAttribute;
+    const col = geo.getAttribute("color") as THREE.BufferAttribute;
     for (let i = 0; i < segments; i++) {
       const s = h[i];
-      s.on = Math.max(0, s.on - fade); // dissipate over time (frame-rate independent)
+      s.on = Math.max(0, s.on - fade);
       const tt = i / (segments - 1);
-      const w = width * (0.4 + tt * 0.95); // spreading astern
-      const a = s.on * (1 - tt) * (1 - tt);
-      pos.setXYZ(i * 2, s.x + s.nx * w, 0.16, s.z + s.nz * w);
-      pos.setXYZ(i * 2 + 1, s.x - s.nx * w, 0.16, s.z - s.nz * w);
-      al.setX(i * 2, a);
-      al.setX(i * 2 + 1, a);
+      const w = width * (0.06 + tt * 1.95); // a triangular wedge: a point at the bow, fanning wide astern
+      const nx = s.nx;
+      const nz = s.nz;
+      const base = i * RIB;
+      let x = s.x + nx * w; // outer left
+      let z = s.z + nz * w;
+      pos.setXYZ(base, x, waterHeight(x, z, time) + 0.05, z);
+      x = s.x + nx * w * 0.5; // arm left
+      z = s.z + nz * w * 0.5;
+      pos.setXYZ(base + 1, x, waterHeight(x, z, time) + 0.05, z);
+      pos.setXYZ(base + 2, s.x, waterHeight(s.x, s.z, time) + 0.06, s.z); // core
+      x = s.x - nx * w * 0.5; // arm right
+      z = s.z - nz * w * 0.5;
+      pos.setXYZ(base + 3, x, waterHeight(x, z, time) + 0.05, z);
+      x = s.x - nx * w; // outer right
+      z = s.z - nz * w;
+      pos.setXYZ(base + 4, x, waterHeight(x, z, time) + 0.05, z);
+
+      // churn breakup (two crossing ripples) + lengthwise dissipation
+      const n1 = Math.sin(s.x * 0.9 - time * 5 + i * 0.8) * 0.5 + 0.5;
+      const n2 = Math.sin(s.z * 1.1 + time * 3.2 + i * 0.5) * 0.5 + 0.5;
+      const decay = s.on * (0.4 + 0.6 * (n1 * 0.6 + n2 * 0.4));
+      const core = decay * (1 - tt) * (1 - tt) * 0.7; // turbulent prop-wash
+      const arm = decay * (1 - tt * 0.8) * 0.55; // diverging Kelvin arms (the wedge edges)
+      col.setXYZW(base, 0.92, 0.97, 1.0, 0);
+      col.setXYZW(base + 1, 0.92, 0.97, 1.0, arm);
+      col.setXYZW(base + 2, 0.93, 0.98, 1.0, core);
+      col.setXYZW(base + 3, 0.92, 0.97, 1.0, arm);
+      col.setXYZW(base + 4, 0.92, 0.97, 1.0, 0);
     }
     pos.needsUpdate = true;
-    al.needsUpdate = true;
-    g.computeBoundingSphere();
+    col.needsUpdate = true;
   });
 
   return (
-    <mesh geometry={geo} frustumCulled={false} renderOrder={2}>
-      <shaderMaterial
-        vertexShader={WAKE_VS}
-        fragmentShader={WAKE_FS}
-        transparent
-        depthWrite={false}
-        depthTest={false}
-      />
+    <mesh geometry={geo} frustumCulled={false} renderOrder={3}>
+      <meshBasicMaterial vertexColors transparent depthWrite={false} side={THREE.DoubleSide} toneMapped={false} />
     </mesh>
   );
 }
@@ -707,7 +724,7 @@ export default function Moliceiro({
           <ProceduralMoliceiro />
         )}
       </group>
-      <WakeTrail target={group} width={2.6} />
+      <WakeTrail target={group} width={1.6} emit={3.0} />
     </>
   );
 }
@@ -779,8 +796,8 @@ export function AmbientBoats({ curve }: { curve: THREE.CatmullRomCurve3 }) {
       <group ref={boatB} scale={0.75}>
         {boat("#3f9d6b", "#d6452e")}
       </group>
-      <WakeTrail target={boatA} width={1.9} />
-      <WakeTrail target={boatB} width={1.8} />
+      <WakeTrail target={boatA} width={1.2} emit={2.3} />
+      <WakeTrail target={boatB} width={1.15} emit={2.2} />
     </>
   );
 }
