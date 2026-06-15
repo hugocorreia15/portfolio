@@ -1,11 +1,9 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { Sky } from "@react-three/drei";
+import { Environment, Lightformer } from "@react-three/drei";
 import * as THREE from "three";
 import type { MapDef } from "@/lib/maps";
-import { SUN_DIR, SUN_POS } from "@/lib/sun";
-import { getTexture } from "@/lib/textures";
 import Water from "@/components/three/Water";
 import City from "@/components/three/City";
 import AveiroCity from "@/components/three/AveiroCity";
@@ -13,30 +11,11 @@ import Landmark from "@/components/three/Landmarks";
 import PortDock from "@/components/three/PortDock";
 import Moliceiro, { AmbientBoats } from "@/components/three/Moliceiro";
 import PlacedModels from "@/components/three/PlacedModel";
-
-/** The visible sun: a bright disc and a soft additive glow, immune to fog. */
-function SunDisc() {
-  const p = SUN_DIR.clone().multiplyScalar(280);
-  return (
-    <group position={[p.x, p.y, p.z]}>
-      <mesh>
-        <sphereGeometry args={[11, 24, 24]} />
-        <meshBasicMaterial color="#fff2cf" fog={false} toneMapped={false} />
-      </mesh>
-      <sprite scale={[70, 70, 1]}>
-        <spriteMaterial
-          map={getTexture("foam")}
-          color="#ffb36b"
-          transparent
-          opacity={0.55}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          fog={false}
-        />
-      </sprite>
-    </group>
-  );
-}
+import {
+  DayNightController,
+  NightStars,
+  ShootingStars,
+} from "@/components/three/Atmosphere";
 
 export default function Scene({
   map,
@@ -63,37 +42,24 @@ export default function Scene({
     <Canvas
       shadows="percentage"
       dpr={[1, 1.75]}
-      camera={{ position: [6, 10, 46], fov: 42, near: 0.5, far: 320 }}
+      gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1 }}
+      camera={{ position: [6, 10, 46], fov: 42, near: 0.5, far: 1600 }}
       className="!fixed inset-0"
     >
-      <color attach="background" args={["#eed2b4"]} />
-      <fog attach="fog" args={["#eed2b4", 55, 185]} />
-      <Sky
-        sunPosition={[SUN_POS.x, SUN_POS.y, SUN_POS.z]}
-        turbidity={7.5}
-        rayleigh={2.4}
-        mieCoefficient={0.006}
-        mieDirectionalG={0.9}
-        distance={3000}
-      />
-      <SunDisc />
+      <color attach="background" args={["#cfe6f2"]} />
+      <fog attach="fog" args={["#cfe6f2", 55, 185]} />
 
-      <hemisphereLight args={["#f4bd8a", "#5d5566", 0.5]} />
-      <ambientLight intensity={0.24} color="#ffe2c4" />
-      <directionalLight
-        castShadow
-        position={[SUN_POS.x, SUN_POS.y, SUN_POS.z]}
-        intensity={1.8}
-        color="#ffb070"
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-75}
-        shadow-camera-right={75}
-        shadow-camera-top={75}
-        shadow-camera-bottom={-75}
-        shadow-camera-far={260}
-        shadow-bias={-0.0005}
-        shadow-normalBias={0.6}
-      />
+      {/* sun, moon, sky, fog and lights, all driven through the day-night loop */}
+      <DayNightController />
+      <NightStars />
+      <ShootingStars />
+
+      {/* lightweight baked reflections (no external HDRI) for PBR materials */}
+      <Environment resolution={64} frames={1}>
+        <Lightformer intensity={1.6} position={[0, 6, 0]} scale={[12, 12, 1]} color="#eaf3ff" />
+        <Lightformer intensity={1.0} position={[6, 2, 4]} scale={[8, 8, 1]} color="#fff2d8" />
+        <Lightformer intensity={0.6} position={[-6, 1, -4]} scale={[8, 8, 1]} color="#9fb6d8" />
+      </Environment>
 
       <Water />
       {map.id === "island" ? <City /> : <AveiroCity />}

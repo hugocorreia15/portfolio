@@ -3,7 +3,7 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { SUN_DIR } from "@/lib/sun";
+import { DAY } from "@/lib/daynight";
 import { getWaterRipples } from "@/lib/textures";
 
 const VERTEX = /* glsl */ `
@@ -48,6 +48,7 @@ const FRAGMENT = /* glsl */ `
   #include <fog_pars_fragment>
   uniform float uTime;
   uniform vec3 uSunDir;
+  uniform float uNight;
   uniform sampler2D uRipples;
   varying vec3 vWorldPos;
   varying vec3 vNormal;
@@ -95,18 +96,26 @@ const FRAGMENT = /* glsl */ `
     vec3 water = mix(deep, shallow, tonePatch * 0.8 + (vWorldPos.y) * 0.4);
     vec3 col = mix(water, sky, 0.12 + 0.52 * fresnel);
 
-    // wave crests catch the low light
-    col += vec3(1.0, 0.85, 0.7) * smoothstep(0.45, 0.86, vH) * 0.10;
+    float day = 1.0 - uNight;
 
-    // sun glitter path: tight sparkle + broad warm sheen
+    // wave crests catch the low light
+    col += vec3(1.0, 0.85, 0.7) * smoothstep(0.45, 0.86, vH) * 0.10 * day;
+
+    // sun glitter path: tight sparkle + broad warm sheen (daytime)
     vec3 R = reflect(-uSunDir, N);
     float rv = max(dot(R, V), 0.0);
-    col += vec3(1.0, 0.72, 0.45) * pow(rv, 160.0) * 1.8;
-    col += vec3(1.0, 0.66, 0.38) * pow(rv, 18.0) * 0.24;
+    col += vec3(1.0, 0.72, 0.45) * pow(rv, 160.0) * 1.8 * day;
+    col += vec3(1.0, 0.66, 0.38) * pow(rv, 18.0) * 0.24 * day;
     // soft sparkles
     vec2 rp = vWorldPos.xz * 0.55;
     float sparkle = smoothstep(0.985, 1.0, vnoise(rp * 3.1 + uTime * 0.5));
-    col += vec3(1.0, 0.9, 0.75) * sparkle * 0.16;
+    col += vec3(1.0, 0.9, 0.75) * sparkle * 0.16 * day;
+
+    // night: deepen + cool the water, faint moon glitter and sparkle
+    vec3 nightWater = vec3(0.015, 0.04, 0.09) + sky * 0.05;
+    col = mix(col, nightWater, uNight * 0.86);
+    col += vec3(0.55, 0.66, 0.92) * pow(rv, 90.0) * uNight * 0.6;
+    col += vec3(0.7, 0.8, 1.0) * sparkle * uNight * 0.1;
 
     gl_FragColor = vec4(col, 1.0);
     #include <fog_fragment>
@@ -119,7 +128,8 @@ export default function Water() {
     () => ({
       ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
       uTime: { value: 0 },
-      uSunDir: { value: SUN_DIR.clone() },
+      uSunDir: { value: DAY.sunDir.clone() },
+      uNight: { value: 0 },
       uRipples: { value: getWaterRipples() },
     }),
     []
@@ -127,7 +137,10 @@ export default function Water() {
 
   useFrame((state) => {
     if (material.current) {
-      material.current.uniforms.uTime.value = state.clock.elapsedTime;
+      const u = material.current.uniforms;
+      u.uTime.value = state.clock.elapsedTime;
+      u.uSunDir.value.copy(DAY.sunDir);
+      u.uNight.value = DAY.night;
     }
   });
 

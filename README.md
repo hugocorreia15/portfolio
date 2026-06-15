@@ -88,7 +88,7 @@ silently; downloaded ones appear on next reload.
 
 | File | Model · author | Where it appears |
 | --- | --- | --- |
-| `moliceiro.glb` | [Moliceiro Aveiro](https://sketchfab.com/3d-models/moliceiro-aveiro-6661978e2edb4749addeb41c2ffaedec) · André Bernardo | the boats — **✓ installed** |
+| `moliceiro.glb` | [Moliceiro](https://skfb.ly/ouOAW) · ricardo.turmas · CC BY-NC-SA 4.0 | the boats — **✓ installed** |
 | `igreja-barrocas.glb` | [Igreja das Barrocas](https://sketchfab.com/3d-models/igreja-das-barrocas-aveiro-3813b360676244ac89879f6b922e1df4) · ricardo.turmas | town-island centrepiece + Aveiro — **✓ installed** |
 | `ponte-carcavelos.glb` | [Ponte de Carcavelos](https://sketchfab.com/3d-models/ponte-de-carcavelos-aveiro-4a504e3b7df541f0a2f489aed2b7d63c) · ricardo.turmas | every bridge on both maps, with ribbons (ponte do laço) — **✓ installed** |
 | `igreja-trofa.glb` | [Igreja da Trofa](https://sketchfab.com/3d-models/igreja-da-trofa-jacinta-c9a65f6a206344cd8c51461ca7a260c1) · ricardo.turmas | island map, replaces the chapel (optional) |

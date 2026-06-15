@@ -342,12 +342,12 @@ export default function Overlay({
       <p className="pointer-events-auto absolute bottom-5 right-5 hidden font-mono text-[10px] text-ink/40 md:block">
         moliceiro:{" "}
         <a
-          href="https://sketchfab.com/3d-models/moliceiro-aveiro-6661978e2edb4749addeb41c2ffaedec"
+          href="https://skfb.ly/ouOAW"
           target="_blank"
           rel="noreferrer"
           className="underline-offset-2 hover:text-azulejo hover:underline"
         >
-          André Bernardo
+          ricardo.turmas
         </a>{" "}
         ·{" "}
         <a

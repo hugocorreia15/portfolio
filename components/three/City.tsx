@@ -105,17 +105,45 @@ export function Lamppost({ position, s = 1 }: { position: [number, number, numbe
         <cylinderGeometry args={[0.055, 0.09, 2.2, 8]} />
         <meshStandardMaterial color="#26303a" roughness={0.5} metalness={0.4} />
       </mesh>
-      <mesh position-y={2.4} castShadow>
-        <boxGeometry args={[0.32, 0.44, 0.32]} />
-        <meshStandardMaterial color="#1c232b" roughness={0.5} metalness={0.4} />
-      </mesh>
+      {/* glowing yellow lantern — the glass itself reads as light, not a black box */}
       <mesh position-y={2.4}>
-        <boxGeometry args={[0.2, 0.32, 0.2]} />
-        <meshStandardMaterial color="#ffe6ad" emissive="#ffcf7a" emissiveIntensity={1.7} />
+        <boxGeometry args={[0.3, 0.44, 0.3]} />
+        <meshStandardMaterial
+          color="#ffe24f"
+          emissive="#ffcc2a"
+          emissiveIntensity={3.2}
+          toneMapped={false}
+        />
       </mesh>
-      <mesh position-y={2.68} castShadow>
+      {/* slim dark frame at the corners so it still reads as a lantern */}
+      {[
+        [-0.14, -0.14],
+        [0.14, -0.14],
+        [-0.14, 0.14],
+        [0.14, 0.14],
+      ].map(([x, z], i) => (
+        <mesh key={i} position={[x, 2.4, z]}>
+          <boxGeometry args={[0.035, 0.47, 0.035]} />
+          <meshStandardMaterial color="#23262e" roughness={0.5} metalness={0.4} />
+        </mesh>
+      ))}
+      {/* the light coming out: yellow glow + a strong point light that pools on the ground */}
+      <sprite position-y={2.4} scale={[2, 2, 1]}>
+        <spriteMaterial
+          map={getTexture("foam")}
+          color="#ffce2f"
+          transparent
+          opacity={0.95}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          fog={false}
+          toneMapped={false}
+        />
+      </sprite>
+      <pointLight position-y={2.45} color="#ffd166" intensity={16} distance={13} decay={1.7} />
+      <mesh position-y={2.72} castShadow>
         <coneGeometry args={[0.26, 0.22, 4]} />
-        <meshStandardMaterial color="#1c232b" roughness={0.5} />
+        <meshStandardMaterial color="#23262e" roughness={0.5} />
       </mesh>
     </group>
   );
