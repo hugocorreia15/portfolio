@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { DAY } from "@/lib/daynight";
 import type { PortDef } from "@/lib/ports";
 import {
   Barrel,
@@ -131,44 +133,169 @@ export function SaltPyramid({
   );
 }
 
+const BEAM_LEN = 17;
+
+/** Farol da Barra — a tall slender red-and-white striped tower with a keeper's
+ *  house, a glass lantern room and a rotating beacon that sweeps a beam at night. */
 function Lighthouse() {
-  const bands = 5;
+  const beacon = useRef<THREE.Group>(null);
+  const beam = useRef<THREE.MeshBasicMaterial>(null);
+  const lantern = useRef<THREE.MeshStandardMaterial>(null);
+  const glow = useRef<THREE.SpriteMaterial>(null);
+  const spot = useRef<THREE.SpotLight>(null);
+  const spotTarget = useRef<THREE.Object3D>(null);
+
+  useEffect(() => {
+    if (spot.current && spotTarget.current) spot.current.target = spotTarget.current;
+  }, []);
+
+  useFrame((state, dt) => {
+    const n = DAY.night;
+    if (beacon.current) beacon.current.rotation.y += dt * 0.85; // the sweep
+    const flick = 0.78 + 0.22 * Math.sin(state.clock.elapsedTime * 3.3);
+    if (beam.current) beam.current.opacity = (0.05 + n * 0.55) * flick;
+    if (lantern.current) lantern.current.emissiveIntensity = 0.9 + n * 3.2;
+    if (glow.current) glow.current.opacity = 0.22 + n * 0.6;
+    if (spot.current) spot.current.intensity = n * 26;
+  });
+
+  const bands = 7;
+  const shaftBase = 2.0;
+  const bandH = 0.82;
+  const shaftTop = shaftBase + bands * bandH;
+  const lanternY = shaftTop + 0.6;
+  const cupolaY = shaftTop + 1.04;
+
   return (
     <group>
-      <mesh position-y={0.3} castShadow>
-        <cylinderGeometry args={[1.2, 1.35, 0.6, 14]} />
-        <meshStandardMaterial color="#f5f1e6" roughness={0.85} />
+      {/* keeper's house at the base */}
+      <mesh position={[0, 0.64, 0.1]} castShadow receiveShadow>
+        <boxGeometry args={[4.6, 1.28, 2.5]} />
+        <meshStandardMaterial color="#efe7d2" {...getSurface("plaster", 2.4, 1.1)} />
       </mesh>
+      <mesh position={[0, 1.34, 0.1]}>
+        <boxGeometry args={[4.8, 0.16, 2.7]} />
+        <meshStandardMaterial color="#d9cdb2" roughness={0.9} />
+      </mesh>
+      {[-1.7, -0.85, 0.95, 1.8].map((x) => (
+        <mesh key={x} position={[x, 0.72, 1.36]}>
+          <boxGeometry args={[0.36, 0.54, 0.06]} />
+          <meshStandardMaterial color="#3a5360" roughness={0.4} metalness={0.1} />
+        </mesh>
+      ))}
+      <mesh position={[0.1, 0.52, 1.36]}>
+        <boxGeometry args={[0.54, 0.94, 0.06]} />
+        <meshStandardMaterial color="#6b4a2e" roughness={0.7} />
+      </mesh>
+
+      {/* white plinth the tower rises from */}
+      <mesh position={[0, 1.58, 0]} castShadow>
+        <cylinderGeometry args={[0.66, 0.8, 0.92, 24]} />
+        <meshStandardMaterial color="#f6f2e7" roughness={0.85} />
+      </mesh>
+
+      {/* striped shaft — red/white bands, gently tapering */}
       {Array.from({ length: bands }, (_, i) => {
-        const rBottom = THREE.MathUtils.lerp(1.05, 0.72, i / bands);
-        const rTop = THREE.MathUtils.lerp(1.05, 0.72, (i + 1) / bands);
+        const rB = THREE.MathUtils.lerp(0.62, 0.47, i / bands);
+        const rT = THREE.MathUtils.lerp(0.62, 0.47, (i + 1) / bands);
         return (
-          <mesh key={i} position-y={0.6 + 0.85 * i + 0.425} castShadow>
-            <cylinderGeometry args={[rTop, rBottom, 0.85, 14]} />
-            <meshStandardMaterial
-              color={i % 2 === 0 ? "#d63426" : "#f5f1e6"}
-              roughness={0.8}
-            />
+          <mesh key={i} position-y={shaftBase + i * bandH + bandH / 2} castShadow>
+            <cylinderGeometry args={[rT, rB, bandH + 0.002, 24]} />
+            <meshStandardMaterial color={i % 2 === 0 ? "#f6f2e7" : "#c9402f"} roughness={0.82} />
           </mesh>
         );
       })}
-      <mesh position-y={4.95}>
-        <cylinderGeometry args={[0.92, 0.92, 0.14, 14]} />
-        <meshStandardMaterial color="#33312c" roughness={0.7} />
+
+      {/* gallery platform + railing under the lantern */}
+      <mesh position-y={shaftTop + 0.06} castShadow>
+        <cylinderGeometry args={[0.74, 0.74, 0.12, 24]} />
+        <meshStandardMaterial color="#2c2a26" roughness={0.7} metalness={0.3} />
       </mesh>
-      <mesh position-y={5.32}>
-        <cylinderGeometry args={[0.46, 0.46, 0.6, 10]} />
-        <meshStandardMaterial
-          color="#fff3d0"
-          emissive="#ffd27d"
-          emissiveIntensity={1.6}
-        />
+      <mesh position-y={shaftTop + 0.32}>
+        <cylinderGeometry args={[0.72, 0.72, 0.42, 20, 1, true]} />
+        <meshStandardMaterial color="#33312c" roughness={0.7} metalness={0.3} side={THREE.DoubleSide} />
       </mesh>
-      <mesh position-y={5.85} castShadow>
-        <coneGeometry args={[0.56, 0.5, 10]} />
-        <meshStandardMaterial color="#d63426" roughness={0.8} />
-      </mesh>
-      <House position={[2.4, 0, 0.6]} rotY={-0.6} w={1.3} h={1.1} color="#f5f1e6" roof="#e09a86" />
+
+      {/* glass lantern room + the rotating beacon */}
+      <group position-y={lanternY}>
+        <mesh>
+          <cylinderGeometry args={[0.5, 0.5, 0.8, 16]} />
+          <meshStandardMaterial
+            ref={lantern}
+            color="#fff6da"
+            emissive="#ffcf72"
+            emissiveIntensity={0.9}
+            transparent
+            opacity={0.9}
+            toneMapped={false}
+          />
+        </mesh>
+        {Array.from({ length: 8 }, (_, i) => {
+          const a = (i / 8) * Math.PI * 2;
+          return (
+            <mesh key={i} position={[Math.cos(a) * 0.5, 0, Math.sin(a) * 0.5]}>
+              <boxGeometry args={[0.05, 0.82, 0.05]} />
+              <meshStandardMaterial color="#2b2925" roughness={0.6} metalness={0.4} />
+            </mesh>
+          );
+        })}
+        <sprite scale={[3.6, 3.6, 1]}>
+          <spriteMaterial
+            ref={glow}
+            map={getTexture("foam")}
+            color="#ffdf8a"
+            transparent
+            opacity={0.22}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            fog={false}
+            toneMapped={false}
+          />
+        </sprite>
+
+        <group ref={beacon}>
+          <object3D ref={spotTarget} position={[-13, -3.5, 0]} />
+          <spotLight
+            ref={spot}
+            position={[0, 0, 0]}
+            angle={0.34}
+            penumbra={0.7}
+            distance={44}
+            decay={1.0}
+            intensity={0}
+            color="#fff2cf"
+          />
+          <mesh position={[-BEAM_LEN / 2, 0, 0]} rotation-z={-Math.PI / 2}>
+            <coneGeometry args={[1.35, BEAM_LEN, 22, 1, true]} />
+            <meshBasicMaterial
+              ref={beam}
+              color="#fff4cf"
+              transparent
+              opacity={0}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+              blending={THREE.AdditiveBlending}
+              toneMapped={false}
+            />
+          </mesh>
+        </group>
+      </group>
+
+      {/* red cupola + finial */}
+      <group position-y={cupolaY}>
+        <mesh castShadow>
+          <coneGeometry args={[0.58, 0.44, 16]} />
+          <meshStandardMaterial color="#c9402f" roughness={0.75} />
+        </mesh>
+        <mesh position-y={0.34}>
+          <sphereGeometry args={[0.08, 10, 8]} />
+          <meshStandardMaterial color="#2b2925" metalness={0.5} roughness={0.5} />
+        </mesh>
+        <mesh position-y={0.54}>
+          <cylinderGeometry args={[0.016, 0.016, 0.32, 6]} />
+          <meshStandardMaterial color="#2b2925" />
+        </mesh>
+      </group>
     </group>
   );
 }
