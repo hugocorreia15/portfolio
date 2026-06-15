@@ -51,7 +51,7 @@ export function Tree({ position, s = 1 }: { position: [number, number, number]; 
     const greens = pine
       ? ["#3c6b39", "#477f42", "#355f37"]
       : ["#5a9c4e", "#69b05c", "#4d8a43", "#7cc06a", "#5fa553"];
-    const n = pine ? 3 : 4 + Math.floor(rnd() * 3);
+    const n = pine ? 3 : 3 + Math.floor(rnd() * 2);
     const blobs = Array.from({ length: n }, (_, i) => {
       const t = i / Math.max(1, n - 1);
       return {
@@ -77,7 +77,7 @@ export function Tree({ position, s = 1 }: { position: [number, number, number]; 
           {b.pine ? (
             <coneGeometry args={[b.r, b.r * 1.6, 8]} />
           ) : (
-            <icosahedronGeometry args={[b.r, 1]} />
+            <icosahedronGeometry args={[b.r, 0]} />
           )}
           <meshStandardMaterial
             color={b.c}
@@ -94,7 +94,15 @@ export function Tree({ position, s = 1 }: { position: [number, number, number]; 
 const FLOWER_COLORS = ["#e5556b", "#f2a73d", "#f2d84a", "#e8e3d6", "#d6608f", "#6fae5a"];
 
 /** Ornate iron lamppost with a warm glowing lantern. */
-export function Lamppost({ position, s = 1 }: { position: [number, number, number]; s?: number }) {
+export function Lamppost({
+  position,
+  s = 1,
+  light = true,
+}: {
+  position: [number, number, number];
+  s?: number;
+  light?: boolean;
+}) {
   return (
     <group position={position} scale={s}>
       <mesh position-y={0.1} castShadow>
@@ -140,7 +148,9 @@ export function Lamppost({ position, s = 1 }: { position: [number, number, numbe
           toneMapped={false}
         />
       </sprite>
-      <pointLight position-y={2.45} color="#ffd166" intensity={16} distance={13} decay={1.7} />
+      {light && (
+        <pointLight position-y={2.45} color="#ffd166" intensity={18} distance={14} decay={1.6} />
+      )}
       <mesh position-y={2.72} castShadow>
         <coneGeometry args={[0.26, 0.22, 4]} />
         <meshStandardMaterial color="#23262e" roughness={0.5} />
@@ -265,7 +275,7 @@ export function Bush({ position, s = 1 }: { position: [number, number, number]; 
   const blobs = useMemo(() => {
     const rnd = mulberry32(Math.round(position[0] * 41 + position[2] * 23 + 9));
     const greens = ["#4f8a45", "#5d9c50", "#69ad5b"];
-    return Array.from({ length: 3 }, () => ({
+    return Array.from({ length: 2 }, () => ({
       x: (rnd() - 0.5) * 0.5,
       y: 0.2 + rnd() * 0.16,
       z: (rnd() - 0.5) * 0.5,
@@ -277,7 +287,7 @@ export function Bush({ position, s = 1 }: { position: [number, number, number]; 
     <group position={position} scale={s}>
       {blobs.map((b, i) => (
         <mesh key={i} position={[b.x, b.y, b.z]} castShadow>
-          <icosahedronGeometry args={[b.r, 1]} />
+          <icosahedronGeometry args={[b.r, 0]} />
           <meshStandardMaterial
             color={b.c}
             roughness={1}
@@ -412,7 +422,7 @@ function MainIsland() {
 
   const trees = useMemo(() => {
     const rnd = mulberry32(21);
-    return Array.from({ length: 11 }, () => {
+    return Array.from({ length: 8 }, () => {
       const a = rnd() * Math.PI * 2;
       const r = 4 + rnd() * 5;
       return {
@@ -424,7 +434,7 @@ function MainIsland() {
 
   const bushes = useMemo(() => {
     const rnd = mulberry32(57);
-    return Array.from({ length: 8 }, () => {
+    return Array.from({ length: 5 }, () => {
       const a = rnd() * Math.PI * 2;
       const r = 4.5 + rnd() * 6.5;
       return {

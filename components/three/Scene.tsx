@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { Environment, Lightformer } from "@react-three/drei";
+import { Environment, Lightformer, Stats } from "@react-three/drei";
 import * as THREE from "three";
 import type { MapDef } from "@/lib/maps";
 import Water from "@/components/three/Water";
@@ -38,14 +38,19 @@ export default function Scene({
   onNearPort: (index: number | null) => void;
   onRequestDock: (index: number) => void;
 }) {
+  // add ?stats to the URL to show a live FPS / frame-time overlay
+  const showStats =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("stats");
   return (
     <Canvas
       shadows="percentage"
-      dpr={[1, 1.5]}
+      dpr={[1, 1.3]}
       gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1 }}
       camera={{ position: [6, 10, 46], fov: 42, near: 0.5, far: 1600 }}
       className="!fixed inset-0"
     >
+      {showStats && <Stats />}
       <color attach="background" args={["#cfe6f2"]} />
       <fog attach="fog" args={["#cfe6f2", 55, 185]} />
 

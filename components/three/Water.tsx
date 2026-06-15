@@ -146,7 +146,7 @@ export default function Water() {
 
   return (
     <mesh rotation-x={-Math.PI / 2} position-y={-0.02}>
-      <planeGeometry args={[520, 520, 96, 96]} />
+      <planeGeometry args={[520, 520, 64, 64]} />
       <shaderMaterial
         ref={material}
         uniforms={uniforms}

@@ -29,13 +29,23 @@ export function DayNightController() {
   const sky = useRef<ComponentRef<typeof Sky>>(null);
   const sunDisc = useRef<THREE.Group>(null);
   const moonDisc = useRef<THREE.Group>(null);
+  const shadowTimer = useRef(0);
 
   useFrame((state, dt) => {
     const { scene, gl } = state;
+
+    // the sun moves slowly, so refresh shadows a few times a second, not every
+    // frame — a big saving (one full shadow pass per refresh instead of 60).
+    gl.shadowMap.autoUpdate = false;
+    shadowTimer.current -= dt;
+    if (shadowTimer.current <= 0) {
+      gl.shadowMap.needsUpdate = true;
+      shadowTimer.current = 0.35;
+    }
+
     const elev = advanceDay(Math.min(dt, 0.05));
     const { night, sunUp: up, dusk } = DAY;
     const sunPos = DAY.sunDir.clone().multiplyScalar(420);
-    const discPos = DAY.sunDir.clone().multiplyScalar(300);
 
     const skyMat = sky.current?.material as THREE.ShaderMaterial | undefined;
     if (skyMat) {
@@ -72,13 +82,26 @@ export function DayNightController() {
     gl.toneMappingExposure = THREE.MathUtils.lerp(0.5, 1.05, up) + dusk * 0.12;
     scene.environmentIntensity = THREE.MathUtils.lerp(0.1, 0.7, up);
 
+    // place the discs on a capped-elevation dome so they stay in the sky view
+    // instead of climbing straight overhead at noon/midnight
+    const azi = Math.atan2(DAY.sunDir.x, DAY.sunDir.z);
+    const elevAngle = Math.asin(THREE.MathUtils.clamp(DAY.sunDir.y, -1, 1));
     if (sunDisc.current) {
-      sunDisc.current.position.copy(discPos);
-      sunDisc.current.visible = elev > -0.12;
+      const e = Math.min(elevAngle, 0.26);
+      const ch = Math.cos(e);
+      sunDisc.current.position
+        .set(Math.sin(azi) * ch, Math.sin(e), Math.cos(azi) * ch)
+        .multiplyScalar(260);
+      sunDisc.current.visible = elev > -0.1;
     }
     if (moonDisc.current) {
-      moonDisc.current.position.set(-discPos.x, -discPos.y, -discPos.z);
-      moonDisc.current.visible = elev < 0.12;
+      const e = Math.min(Math.max(-elevAngle, 0.08), 0.26);
+      const ch = Math.cos(e);
+      const ma = azi + Math.PI;
+      moonDisc.current.position
+        .set(Math.sin(ma) * ch, Math.sin(e), Math.cos(ma) * ch)
+        .multiplyScalar(260);
+      moonDisc.current.visible = elev < 0.1;
     }
   });
 
@@ -102,17 +125,18 @@ export function DayNightController() {
       <ambientLight ref={ambient} />
       <group ref={sunDisc}>
         <mesh>
-          <sphereGeometry args={[12, 24, 24]} />
+          <sphereGeometry args={[18, 28, 28]} />
           <meshBasicMaterial color="#fff4d0" fog={false} toneMapped={false} />
         </mesh>
-        <sprite scale={[100, 100, 1]}>
+        <sprite scale={[175, 175, 1]}>
           <spriteMaterial
             map={getTexture("foam")}
-            color="#ffd877"
+            color="#ffd05e"
             transparent
-            opacity={0.75}
+            opacity={0.85}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
+            depthTest={false}
             fog={false}
             toneMapped={false}
           />
@@ -120,17 +144,18 @@ export function DayNightController() {
       </group>
       <group ref={moonDisc}>
         <mesh>
-          <sphereGeometry args={[8, 24, 24]} />
+          <sphereGeometry args={[13, 28, 28]} />
           <meshBasicMaterial color="#eef3ff" fog={false} toneMapped={false} />
         </mesh>
-        <sprite scale={[58, 58, 1]}>
+        <sprite scale={[105, 105, 1]}>
           <spriteMaterial
             map={getTexture("foam")}
-            color="#b3c8f0"
+            color="#aec6f4"
             transparent
-            opacity={0.6}
+            opacity={0.7}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
+            depthTest={false}
             fog={false}
             toneMapped={false}
           />
@@ -145,7 +170,7 @@ export function NightStars() {
   const mat = useRef<THREE.PointsMaterial>(null);
   const geom = useMemo(() => {
     const rnd = mulberry32(8842);
-    const n = 4200;
+    const n = 1800;
     const pos = new Float32Array(n * 3);
     const col = new Float32Array(n * 3);
     const v = new THREE.Vector3();

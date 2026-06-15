@@ -354,9 +354,7 @@ export default function Overlay({
         </a>{" "}
         ·{" "}
         <a
-          href="https://github.com/hugocorreia15/portfolio#optional-scenery-models-3d-credits"
-          target="_blank"
-          rel="noreferrer"
+          href="/credits"
           className="underline-offset-2 hover:text-azulejo hover:underline"
         >
           3D credits ↗
