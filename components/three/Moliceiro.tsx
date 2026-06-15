@@ -1,12 +1,19 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type RefObject,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { shortestDelta, wrap1 } from "@/lib/ports";
 import type { MapDef } from "@/lib/maps";
-import { getSurface, getTexture } from "@/lib/textures";
+import { getSurface } from "@/lib/textures";
 
 const GLB_URL = "/models/moliceiro.glb";
 /** Tweak these if the Sketchfab model sits oddly (flip extraRotY to Math.PI if it sails backwards).
@@ -55,14 +62,133 @@ const _desired = new THREE.Vector3();
 const _lookAt = new THREE.Vector3();
 const _normal = new THREE.Vector3();
 const _scan = new THREE.Vector3();
-const _wakeMat = new THREE.Matrix4();
-const _wakeQuat = new THREE.Quaternion();
-const _wakeV = new THREE.Vector3();
-const _wakeS = new THREE.Vector3();
-const _wakeCol = new THREE.Color();
+const _wp = new THREE.Vector3();
 
-const WAKE_COUNT = 64;
-const WAKE_LIFE = 1.8;
+const WAKE_VS = /* glsl */ `
+  attribute float aAlpha;
+  attribute float aSide;
+  varying float vAlpha;
+  varying float vSide;
+  void main() {
+    vAlpha = aAlpha;
+    vSide = aSide;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const WAKE_FS = /* glsl */ `
+  precision mediump float;
+  varying float vAlpha;
+  varying float vSide;
+  void main() {
+    float edge = smoothstep(1.0, 0.2, abs(vSide)); // soft foam edges
+    float a = vAlpha * edge * 0.6;
+    if (a < 0.01) discard;
+    gl_FragColor = vec4(0.86, 0.93, 0.97, a);
+  }
+`;
+
+/**
+ * A flat foam ribbon that trails behind a moving boat — the line the hull
+ * cuts through the water — narrow at the stern, spreading and fading astern.
+ */
+function WakeTrail({
+  target,
+  width = 2.4,
+  segments = 48,
+}: {
+  target: RefObject<THREE.Group | null>;
+  width?: number;
+  segments?: number;
+}) {
+  const geo = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(segments * 6), 3));
+    g.setAttribute("aAlpha", new THREE.BufferAttribute(new Float32Array(segments * 2), 1));
+    const side = new Float32Array(segments * 2);
+    for (let i = 0; i < segments; i++) {
+      side[i * 2] = 1;
+      side[i * 2 + 1] = -1;
+    }
+    g.setAttribute("aSide", new THREE.BufferAttribute(side, 1));
+    const idx: number[] = [];
+    for (let i = 0; i < segments - 1; i++) {
+      const a = i * 2;
+      idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    }
+    g.setIndex(idx);
+    return g;
+  }, [segments]);
+
+  const hist = useRef<
+    Array<{ x: number; z: number; nx: number; nz: number; on: number }> | null
+  >(null);
+  if (hist.current == null) {
+    hist.current = Array.from({ length: segments }, () => ({
+      x: 0,
+      z: 0,
+      nx: 0,
+      nz: 1,
+      on: 0,
+    }));
+  }
+  const last = useRef(new THREE.Vector3());
+
+  useFrame(() => {
+    const t = target.current;
+    const g = geo;
+    const h = hist.current;
+    if (!t || !h) return;
+    t.getWorldPosition(_wp);
+    const dx = _wp.x - last.current.x;
+    const dz = _wp.z - last.current.z;
+    const moved = Math.hypot(dx, dz);
+    if (moved > 0.3) {
+      for (let i = segments - 1; i > 0; i--) {
+        const a = h[i];
+        const b = h[i - 1];
+        a.x = b.x;
+        a.z = b.z;
+        a.nx = b.nx;
+        a.nz = b.nz;
+        a.on = b.on;
+      }
+      h[0].x = _wp.x;
+      h[0].z = _wp.z;
+      h[0].nx = -dz / moved;
+      h[0].nz = dx / moved;
+      h[0].on = 1;
+      last.current.copy(_wp);
+    }
+    const pos = g.getAttribute("position") as THREE.BufferAttribute;
+    const al = g.getAttribute("aAlpha") as THREE.BufferAttribute;
+    for (let i = 0; i < segments; i++) {
+      const s = h[i];
+      s.on *= 0.975; // dissipate over time
+      const tt = i / (segments - 1);
+      const w = width * (0.2 + tt * 1.05); // narrow at stern, spreading astern
+      const a = s.on * (1 - tt) * (1 - tt);
+      pos.setXYZ(i * 2, s.x + s.nx * w, 0.07, s.z + s.nz * w);
+      pos.setXYZ(i * 2 + 1, s.x - s.nx * w, 0.07, s.z - s.nz * w);
+      al.setX(i * 2, a);
+      al.setX(i * 2 + 1, a);
+    }
+    pos.needsUpdate = true;
+    al.needsUpdate = true;
+    g.computeBoundingSphere();
+  });
+
+  return (
+    <mesh geometry={geo} frustumCulled={false} renderOrder={2}>
+      <shaderMaterial
+        vertexShader={WAKE_VS}
+        fragmentShader={WAKE_FS}
+        transparent
+        depthWrite={false}
+      />
+    </mesh>
+  );
+}
 
 // one shared probe so every boat agrees on whether the GLB exists
 let glbProbe: Promise<boolean> | null = null;
@@ -280,31 +406,6 @@ export default function Moliceiro({
     s: number;
   } | null>(null);
 
-  // wake foam particles (ring buffer; age >= WAKE_LIFE means free slot)
-  const wakeMesh = useRef<THREE.InstancedMesh>(null);
-  const wake = useRef<{
-    parts: Array<{ x: number; z: number; vx: number; vz: number; age: number }>;
-    next: number;
-    timer: number;
-  } | null>(null);
-  if (wake.current == null) {
-    wake.current = {
-      parts: Array.from({ length: WAKE_COUNT }, () => ({
-        x: 0,
-        z: 0,
-        vx: 0,
-        vz: 0,
-        age: WAKE_LIFE,
-      })),
-      next: 0,
-      timer: 0,
-    };
-  }
-  const wakeGeom = useMemo(() => {
-    const g = new THREE.PlaneGeometry(1, 1);
-    g.rotateX(-Math.PI / 2);
-    return g;
-  }, []);
   const arrived = useRef(false);
   const engagedTarget = useRef<number | null>(0);
   const wasManual = useRef(false);
@@ -550,63 +651,6 @@ export default function Moliceiro({
       group.current.rotation.x = Math.sin(time * 1.4 + 1) * 0.02;
     }
 
-    // wake foam: prop wash astern + bow waves drifting out into a V
-    const wk = wake.current!;
-    const wm = wakeMesh.current;
-    if (wm) {
-      const spd = Math.abs(ph.speed);
-      wk.timer -= dt;
-      if (spd > 1.2 && wk.timer <= 0) {
-        wk.timer = THREE.MathUtils.clamp(0.8 / spd, 0.12, 0.4);
-        const fx = Math.sin(ph.heading);
-        const fz = Math.cos(ph.heading);
-        const sx = fz;
-        const sz = -fx;
-        const emit = (px: number, pz: number, vx: number, vz: number) => {
-          const p = wk.parts[wk.next];
-          wk.next = (wk.next + 1) % WAKE_COUNT;
-          p.x = px + (Math.random() - 0.5) * 0.35;
-          p.z = pz + (Math.random() - 0.5) * 0.35;
-          p.vx = vx;
-          p.vz = vz;
-          p.age = 0;
-        };
-        const drift = 0.55 + spd * 0.07;
-        emit(ph.pos.x - fx * 2.4, ph.pos.z - fz * 2.4, -fx * 0.5, -fz * 0.5);
-        emit(
-          ph.pos.x + fx * 2.0 + sx * 1.1,
-          ph.pos.z + fz * 2.0 + sz * 1.1,
-          sx * drift,
-          sz * drift
-        );
-        emit(
-          ph.pos.x + fx * 2.0 - sx * 1.1,
-          ph.pos.z + fz * 2.0 - sz * 1.1,
-          -sx * drift,
-          -sz * drift
-        );
-      }
-      for (let i = 0; i < WAKE_COUNT; i++) {
-        const p = wk.parts[i];
-        if (p.age < WAKE_LIFE) {
-          p.age += dt;
-          p.x += p.vx * dt;
-          p.z += p.vz * dt;
-        }
-        const t = Math.min(p.age / WAKE_LIFE, 1);
-        const scale = t >= 1 ? 0 : 0.35 + t * 1.6;
-        _wakeMat.compose(
-          _wakeV.set(p.x, 0.3, p.z),
-          _wakeQuat,
-          _wakeS.setScalar(scale)
-        );
-        wm.setMatrixAt(i, _wakeMat);
-        wm.setColorAt(i, _wakeCol.setScalar(t >= 1 ? 0 : (1 - t) * (1 - t) * 0.32));
-      }
-      wm.instanceMatrix.needsUpdate = true;
-      if (wm.instanceColor) wm.instanceColor.needsUpdate = true;
-    }
-
     // camera: pier framing when docked, otherwise an orbitable chase cam
     const c = cam.current;
     if (dockedIndex !== null) {
@@ -662,19 +706,7 @@ export default function Moliceiro({
           <ProceduralMoliceiro />
         )}
       </group>
-      <instancedMesh
-        ref={wakeMesh}
-        args={[undefined, undefined, WAKE_COUNT]}
-        frustumCulled={false}
-      >
-        <primitive object={wakeGeom} attach="geometry" />
-        <meshBasicMaterial
-          map={getTexture("foam")}
-          transparent
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-        />
-      </instancedMesh>
+      <WakeTrail target={group} width={2.6} />
     </>
   );
 }
@@ -746,6 +778,8 @@ export function AmbientBoats({ curve }: { curve: THREE.CatmullRomCurve3 }) {
       <group ref={boatB} scale={0.75}>
         {boat("#3f9d6b", "#d6452e")}
       </group>
+      <WakeTrail target={boatA} width={1.9} />
+      <WakeTrail target={boatB} width={1.8} />
     </>
   );
 }
