@@ -14,23 +14,14 @@ export interface AssetCredit {
  */
 export const ASSET_CREDITS: AssetCredit[] = [
   {
-    name: "Moliceiro",
-    author: "ricardo.turmas",
-    authorUrl: "https://sketchfab.com/ricardo.turmas",
-    modelUrl: "https://skfb.ly/ouOAW",
-    license: "CC BY-NC-SA 4.0",
-    licenseUrl: "http://creativecommons.org/licenses/by-nc-sa/4.0/",
-    role: "The moliceiro boats",
-  },
-  {
     name: "Igreja das Barrocas — Aveiro",
     author: "ricardo.turmas",
     authorUrl: "https://sketchfab.com/ricardo.turmas",
     modelUrl:
       "https://sketchfab.com/3d-models/igreja-das-barrocas-aveiro-3813b360676244ac89879f6b922e1df4",
-    license: "CC BY-NC-SA 4.0",
-    licenseUrl: "http://creativecommons.org/licenses/by-nc-sa/4.0/",
-    role: "Town-island church",
+    license: "CC BY 4.0",
+    licenseUrl: "http://creativecommons.org/licenses/by/4.0/",
+    role: "The church on the island",
   },
   {
     name: "Ponte de Carcavelos — Aveiro",
@@ -38,17 +29,28 @@ export const ASSET_CREDITS: AssetCredit[] = [
     authorUrl: "https://sketchfab.com/ricardo.turmas",
     modelUrl:
       "https://sketchfab.com/3d-models/ponte-de-carcavelos-aveiro-4a504e3b7df541f0a2f489aed2b7d63c",
-    license: "CC BY-NC-SA 4.0",
-    licenseUrl: "http://creativecommons.org/licenses/by-nc-sa/4.0/",
+    license: "CC BY 4.0",
+    licenseUrl: "http://creativecommons.org/licenses/by/4.0/",
     role: "The canal bridges",
   },
   {
     name: "Old Street Lamp Pack",
     author: "Bailey123704",
     authorUrl: "https://sketchfab.com/Bailey123704",
-    modelUrl: "https://skfb.ly/pKEKX",
+    modelUrl:
+      "https://sketchfab.com/3d-models/old-street-lamp-pack-324ff0abd82d4f679f9e64065ad142a3",
     license: "CC BY 4.0",
     licenseUrl: "http://creativecommons.org/licenses/by/4.0/",
-    role: "Quayside lampposts",
+    role: "Lampposts by the piers",
+  },
+  {
+    name: "Low Poly Forest Tree Pack",
+    author: "99.Miles",
+    authorUrl: "https://sketchfab.com/99.Miles",
+    modelUrl:
+      "https://sketchfab.com/3d-models/low-poly-forest-tree-pack-5ff5a51e74324845a4e4905f182dfb2b",
+    license: "CC BY 4.0",
+    licenseUrl: "http://creativecommons.org/licenses/by/4.0/",
+    role: "Trees and bushes",
   },
 ];

@@ -25,8 +25,9 @@ export default function CreditsPage() {
           <h1 className="mt-2 font-display text-4xl text-ink">3D Credits</h1>
           <p className="mt-3 max-w-prose text-[15px] leading-relaxed text-ink/70">
             The 3D models below were made by their respective creators and are
-            used here under their Creative Commons licenses. The rest of the
-            world — water, town, props and the rest — is hand-built.
+            used here under their Creative Commons licenses. Everything else —
+            the moliceiros, the water, the houses and their facades, the
+            calçada and the props — is built in code for this site.
           </p>
         </header>
 
@@ -77,8 +78,17 @@ export default function CreditsPage() {
         </ul>
 
         <p className="mt-10 font-mono text-[10px] leading-relaxed text-ink/40">
-          Textures: ambientCG (CC0). Map geometry: © OpenStreetMap contributors
-          (ODbL). Built with Next.js + React Three Fiber.
+          Aveiro map: canals, quays, streets and building footprints from ©{" "}
+          <a
+            href="https://www.openstreetmap.org/copyright"
+            target="_blank"
+            rel="noreferrer"
+            className="underline-offset-2 hover:underline"
+          >
+            OpenStreetMap contributors
+          </a>{" "}
+          (ODbL). Textures: ambientCG (CC0); calçada and facades generated. Built
+          with Next.js + React Three Fiber.
         </p>
       </div>
     </main>
