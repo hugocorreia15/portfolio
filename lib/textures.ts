@@ -14,7 +14,8 @@ export type TextureKind =
   | "calcada"
   | "sand"
   | "foam"
-  | "foliage";
+  | "foliage"
+  | "ashlar";
 
 THREE.Cache.enabled = true;
 
@@ -139,6 +140,29 @@ function draw(kind: TextureKind, ctx: CanvasRenderingContext2D, s: number) {
       ctx.ellipse(x, y, r, r * 0.6, hash(i, 7, 101) * Math.PI, 0, Math.PI * 2);
       ctx.fill();
     }
+  } else if (kind === "ashlar") {
+    // dressed stone blocks of a quay wall, staggered courses
+    const rows = 4;
+    const rh = s / rows;
+    for (let r = 0; r < rows; r++) {
+      const bw = rh * (1.6 + hash(r, 2, 5) * 0.8);
+      const off = hash(r, 9, 3) * bw;
+      for (let x = -off; x < s; x += bw) {
+        const v = 0.04 + hash(Math.round(x), r, 19) * 0.14;
+        ctx.fillStyle = `rgba(60,55,45,${v.toFixed(3)})`;
+        ctx.fillRect(x + 2, r * rh + 2, bw - 4, rh - 4);
+        ctx.fillStyle = "rgba(255,255,255,0.12)";
+        ctx.fillRect(x + 3, r * rh + 3, bw - 6, 3);
+      }
+      ctx.fillStyle = "rgba(40,35,28,0.45)";
+      ctx.fillRect(0, r * rh, s, 2.5);
+    }
+    // weathering towards the waterline
+    const g = ctx.createLinearGradient(0, 0, 0, s);
+    g.addColorStop(0.6, "rgba(40,50,40,0)");
+    g.addColorStop(1, "rgba(40,50,40,0.28)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, s, s);
   } else if (kind === "calcada") {
     const n = 18;
     const cs = s / n;
@@ -183,8 +207,8 @@ export function getTexture(kind: TextureKind, rx = 1, ry = 1): THREE.Texture {
 }
 
 // ---------------------------------------------------------------------------
-// Image-based PBR surfaces — CC0 packs from ambientCG in /public/textures,
-// flattened to <slot>_color.jpg / <slot>_normal.jpg / <slot>_rough.jpg.
+// Image-based PBR surfaces in /public/textures as <slot>_{color,normal,rough}.webp:
+// CC0 packs from ambientCG, plus the calçada baked by scripts/gen-calcada.py.
 // Procedural canvases above remain the fallback for kinds without files.
 // ---------------------------------------------------------------------------
 
@@ -202,20 +226,34 @@ export interface SurfaceMaps {
   roughnessMap?: THREE.Texture;
 }
 
+const imgBase = new Map<string, THREE.Texture>();
 const imgCache = new Map<string, THREE.Texture>();
 const loader = new THREE.TextureLoader();
 
+/** One load per image; each repeat is a clone sharing the same Source, so the
+ *  GPU uploads every bitmap once no matter how many tilings use it. */
 function loadImage(url: string, srgb: boolean, rx: number, ry: number) {
   const key = `${url}:${rx}:${ry}`;
   let t = imgCache.get(key);
-  if (!t) {
-    t = loader.load(url);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(rx, ry);
-    t.anisotropy = 8;
-    t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-    imgCache.set(key, t);
+  if (t) return t;
+  let base = imgBase.get(url);
+  if (!base) {
+    base = loader.load(url, (tex) => {
+      // clones copy the Source but not its "loaded" version bump
+      imgCache.forEach((c) => {
+        if (c.source === tex.source) c.needsUpdate = true;
+      });
+    });
+    base.wrapS = base.wrapT = THREE.RepeatWrapping;
+    base.anisotropy = 8;
+    base.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    imgBase.set(url, base);
   }
+  t = base.clone();
+  t.repeat.set(rx, ry);
+  // clone() flags an upload; hold it until the bitmap arrives (onLoad bumps it)
+  if (!base.image) t.version = 0;
+  imgCache.set(key, t);
   return t;
 }
 
@@ -224,9 +262,9 @@ export function getSurface(kind: TextureKind, rx = 1, ry = 1): SurfaceMaps {
   const slot = IMAGE_SLOTS[kind];
   if (!slot) return { map: getTexture(kind, rx, ry) };
   return {
-    map: loadImage(`/textures/${slot}_color.jpg`, true, rx, ry),
-    normalMap: loadImage(`/textures/${slot}_normal.jpg`, false, rx, ry),
-    roughnessMap: loadImage(`/textures/${slot}_rough.jpg`, false, rx, ry),
+    map: loadImage(`/textures/${slot}_color.webp`, true, rx, ry),
+    normalMap: loadImage(`/textures/${slot}_normal.webp`, false, rx, ry),
+    roughnessMap: loadImage(`/textures/${slot}_rough.webp`, false, rx, ry),
   };
 }
 
@@ -276,6 +314,11 @@ export function getWaterRipples(): THREE.DataTexture {
   }
   ripples = new THREE.DataTexture(data, s, s, THREE.RGBAFormat);
   ripples.wrapS = ripples.wrapT = THREE.RepeatWrapping;
+  // DataTextures default to nearest filtering, which made the sun glint blocky
+  ripples.magFilter = THREE.LinearFilter;
+  ripples.minFilter = THREE.LinearMipmapLinearFilter;
+  ripples.generateMipmaps = true;
+  ripples.anisotropy = 4;
   ripples.needsUpdate = true;
   return ripples;
 }
