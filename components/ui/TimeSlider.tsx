@@ -53,7 +53,7 @@ export default function TimeSlider() {
   };
 
   return (
-    <div className="pointer-events-auto absolute left-1/2 top-16 z-40 flex w-[min(20rem,82vw)] -translate-x-1/2 items-center gap-2 rounded-full border border-ink/10 bg-salt/85 px-3 py-1.5 shadow-lg shadow-ink/10 backdrop-blur">
+    <div className="pointer-events-auto absolute left-1/2 top-[6.6rem] z-40 flex w-[min(20rem,88vw)] -translate-x-1/2 md:top-16 items-center gap-2 rounded-full border border-ink/10 bg-salt/85 px-3 py-1.5 shadow-lg shadow-ink/10 backdrop-blur">
       <button
         onClick={togglePlay}
         aria-label={paused ? "Resume time" : "Pause time"}
@@ -82,7 +82,7 @@ export default function TimeSlider() {
         ref={label}
         className="w-10 shrink-0 text-right font-mono text-[11px] tabular-nums text-ink/70"
       >
-        06:00
+        {formatTime(DAY.t)}
       </span>
     </div>
   );
