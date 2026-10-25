@@ -2,23 +2,16 @@
 
 import {
   type RefObject,
-  Suspense,
   useEffect,
   useMemo,
   useRef,
-  useState,
 } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { shortestDelta, wrap1 } from "@/lib/ports";
 import type { MapDef } from "@/lib/maps";
-import { getSurface } from "@/lib/textures";
-
-const GLB_URL = "/models/moliceiro.glb";
-/** Tweak these if the Sketchfab model sits oddly (flip extraRotY to Math.PI if it sails backwards).
- *  draft = how deep the hull's bounding-box bottom sits below the waterline. */
-const GLB_TUNE = { length: 7.2, draft: -0.35, extraRotY: 0 };
+import type { PortDef } from "@/lib/ports";
+import { MoliceiroModel } from "@/components/three/moliceiroModel";
 
 const MAX_SPEED = 9.5;
 const MAX_REVERSE = -3.4;
@@ -36,7 +29,7 @@ const BOATS: BoatMark[] = [
 ];
 
 /** Push pos out of every other boat's clearance circle. Returns true on contact. */
-function avoidBoats(pos: THREE.Vector3, selfIndex: number) {
+function avoidBoats(pos: THREE.Vector3, selfIndex: number, clearance = BOAT_CLEARANCE) {
   let hit = false;
   for (let i = 0; i < BOATS.length; i++) {
     if (i === selfIndex) continue;
@@ -45,8 +38,8 @@ function avoidBoats(pos: THREE.Vector3, selfIndex: number) {
     const dx = pos.x - b.x;
     const dz = pos.z - b.z;
     const d = Math.hypot(dx, dz);
-    if (d > 0.0001 && d < BOAT_CLEARANCE) {
-      const push = BOAT_CLEARANCE - d;
+    if (d > 0.0001 && d < clearance) {
+      const push = clearance - d;
       pos.x += (dx / d) * push;
       pos.z += (dz / d) * push;
       hit = true;
@@ -63,6 +56,7 @@ const _lookAt = new THREE.Vector3();
 const _normal = new THREE.Vector3();
 const _scan = new THREE.Vector3();
 const _wp = new THREE.Vector3();
+const _UP = new THREE.Vector3(0, 1, 0);
 
 // the same three-wave surface the Water shader displaces its plane by, evaluated
 // on the CPU so foam can ride the swell exactly. Water mesh sits at y = -0.02 and
@@ -72,6 +66,38 @@ function waterHeight(x: number, z: number, t: number) {
   const w2 = Math.sin(-z * 0.23 - t * 0.6);
   const w3 = Math.sin((x - z) * 0.11 + t * 0.45);
   return -0.02 + (0.42 * w1 + 0.26 * w2 + 0.18 * w3) * 0.34;
+}
+
+const _fwd = new THREE.Vector3();
+const _port = new THREE.Vector3();
+
+/**
+ * Float a hull on the swell: height from the mean of bow, midship and stern,
+ * pitch and roll from the slope of the water under it (rotation order YXZ).
+ */
+function rideWaves(
+  obj: THREE.Object3D,
+  x: number,
+  z: number,
+  heading: number,
+  t: number,
+  scale: number,
+  roll = 0
+) {
+  const half = 2.8 * scale;
+  const beam = 0.55 * scale;
+  _fwd.set(Math.sin(heading), 0, Math.cos(heading));
+  _port.set(Math.cos(heading), 0, -Math.sin(heading));
+  const hBow = waterHeight(x + _fwd.x * half, z + _fwd.z * half, t);
+  const hStern = waterHeight(x - _fwd.x * half, z - _fwd.z * half, t);
+  const hPort = waterHeight(x + _port.x * beam, z + _port.z * beam, t);
+  const hStar = waterHeight(x - _port.x * beam, z - _port.z * beam, t);
+  const hMid = waterHeight(x, z, t);
+  obj.rotation.order = "YXZ";
+  obj.position.set(x, (hBow + hStern + hMid) / 3 + 0.03 * scale, z);
+  obj.rotation.y = heading;
+  obj.rotation.x = -Math.atan2(hBow - hStern, 2 * half);
+  obj.rotation.z = Math.atan2(hPort - hStar, 2 * beam) + roll;
 }
 
 /**
@@ -130,10 +156,12 @@ function WakeTrail({
     const px = _wp.x + Math.sin(t.rotation.y) * emit;
     const pz = _wp.z + Math.cos(t.rotation.y) * emit;
 
-    if (!seeded.current) {
+    // (re)seed on the first frame and after a teleport (deep link, map load)
+    if (!seeded.current || Math.hypot(px - last.current.x, pz - last.current.z) > 6) {
       for (const s of h) {
         s.x = px;
         s.z = pz;
+        s.on = 0;
       }
       last.current.set(px, 0, pz);
       seeded.current = true;
@@ -208,29 +236,6 @@ function WakeTrail({
   );
 }
 
-// one shared probe so every boat agrees on whether the GLB exists
-let glbProbe: Promise<boolean> | null = null;
-function probeGlb() {
-  glbProbe ??= fetch(GLB_URL, { method: "HEAD" })
-    .then((r) => r.ok)
-    .catch(() => false);
-  return glbProbe;
-}
-
-function useHasGlb() {
-  const [has, setHas] = useState(false);
-  useEffect(() => {
-    let on = true;
-    probeGlb().then((v) => {
-      if (on) setHas(v);
-    });
-    return () => {
-      on = false;
-    };
-  }, []);
-  return has;
-}
-
 const MOVE_CODES = new Set([
   "KeyW",
   "KeyA",
@@ -241,6 +246,16 @@ const MOVE_CODES = new Set([
   "ArrowLeft",
   "ArrowRight",
 ]);
+
+/** Camera position for a moored boat: behind it across the water, off-axis. */
+function dockFraming(port: PortDef, boat: THREE.Vector3, bs: number, out: THREE.Vector3) {
+  const city = bs < 1;
+  return out
+    .copy(boat)
+    .addScaledVector(port.outward, city ? -12 : -15)
+    .addScaledVector(port.tangent, city ? 4.5 : 6.5)
+    .setY(city ? 11.5 : 8.2);
+}
 
 function dampAngle(current: number, target: number, lambda: number, dt: number) {
   let d = (target - current) % (Math.PI * 2);
@@ -264,125 +279,11 @@ function nearestT(curve: THREE.CatmullRomCurve3, pos: THREE.Vector3) {
   return best;
 }
 
-export function ProceduralMoliceiro({
-  accent = "#f2b705",
-  accent2 = "#c93a2e",
-}: {
-  accent?: string;
-  accent2?: string;
-}) {
-  const hull = useMemo(() => {
-    const s = new THREE.Shape();
-    s.moveTo(-2.6, 0);
-    s.lineTo(2.3, 0);
-    s.quadraticCurveTo(3.0, 0.1, 3.55, 1.75); // swan-neck bow
-    s.quadraticCurveTo(3.1, 0.9, 2.2, 0.72);
-    s.lineTo(-2.0, 0.66);
-    s.quadraticCurveTo(-2.8, 0.7, -3.05, 1.2); // raised stern
-    s.quadraticCurveTo(-2.85, 0.35, -2.6, 0);
-    const g = new THREE.ExtrudeGeometry(s, {
-      depth: 1.3,
-      bevelEnabled: true,
-      bevelThickness: 0.12,
-      bevelSize: 0.12,
-      bevelSegments: 2,
-      steps: 1,
-    });
-    g.translate(0, 0, -0.65);
-    return g;
-  }, []);
-
-  return (
-    <group rotation-y={-Math.PI / 2} scale={0.92}>
-      <mesh geometry={hull} castShadow>
-        <meshStandardMaterial color="#1d2b29" roughness={0.75} />
-      </mesh>
-      {/* deck */}
-      <mesh position={[-0.15, 0.56, 0]} castShadow>
-        <boxGeometry args={[4.1, 0.1, 1.05]} />
-        <meshStandardMaterial color="#cbb393" {...getSurface("wood", 2, 0.5)} />
-      </mesh>
-      {/* painted bow panels */}
-      <group position={[2.35, 0.92, 0]} rotation-z={0.55}>
-        <mesh castShadow>
-          <boxGeometry args={[1.3, 0.55, 1.62]} />
-          <meshStandardMaterial color={accent} roughness={0.7} />
-        </mesh>
-        <mesh position-y={0.33}>
-          <boxGeometry args={[1.34, 0.15, 1.64]} />
-          <meshStandardMaterial color={accent2} roughness={0.7} />
-        </mesh>
-      </group>
-      {/* painted stern panel */}
-      <group position={[-2.45, 0.78, 0]} rotation-z={-0.45}>
-        <mesh castShadow>
-          <boxGeometry args={[0.95, 0.45, 1.58]} />
-          <meshStandardMaterial color={accent2} roughness={0.7} />
-        </mesh>
-        <mesh position-y={0.27}>
-          <boxGeometry args={[0.99, 0.12, 1.6]} />
-          <meshStandardMaterial color={accent} roughness={0.7} />
-        </mesh>
-      </group>
-      {/* boatman with his vara */}
-      <group position={[-1.55, 0.6, 0]}>
-        <mesh position-y={0.34} castShadow>
-          <cylinderGeometry args={[0.14, 0.18, 0.62, 8]} />
-          <meshStandardMaterial color="#2b2b35" roughness={0.9} />
-        </mesh>
-        <mesh position-y={0.78} castShadow>
-          <sphereGeometry args={[0.14, 10, 8]} />
-          <meshStandardMaterial color="#e8b88f" roughness={0.8} />
-        </mesh>
-        <mesh position-y={0.9}>
-          <cylinderGeometry args={[0.19, 0.19, 0.04, 10]} />
-          <meshStandardMaterial color="#1c1c22" roughness={0.9} />
-        </mesh>
-        <mesh position={[0.32, 0.45, 0.25]} rotation-z={-0.55} rotation-x={0.2}>
-          <cylinderGeometry args={[0.025, 0.025, 2.6, 6]} />
-          <meshStandardMaterial color="#8a6b43" roughness={0.95} />
-        </mesh>
-      </group>
-    </group>
-  );
-}
-
-function GlbMoliceiro() {
-  const { scene } = useGLTF(GLB_URL);
-
-  const prepared = useMemo(() => {
-    const obj = scene.clone(true);
-    obj.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh) o.castShadow = true;
-    });
-    const box = new THREE.Box3().setFromObject(obj);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    obj.position.sub(center);
-    const wrapper = new THREE.Group();
-    wrapper.add(obj);
-    // normalise: longest horizontal side becomes the boat length, and the
-    // bounding-box bottom sits at a fixed draft — independent of mast height,
-    // which is why a fraction-of-height lift sank the hull
-    if (size.z > size.x) obj.rotation.y = Math.PI / 2;
-    const s = GLB_TUNE.length / Math.max(size.x, size.z);
-    wrapper.scale.setScalar(s);
-    wrapper.position.y = (size.y * s) / 2 - GLB_TUNE.draft;
-    wrapper.rotation.y = GLB_TUNE.extraRotY;
-    return wrapper;
-  }, [scene]);
-
-  return (
-    <group rotation-y={-Math.PI / 2}>
-      <primitive object={prepared} />
-    </group>
-  );
-}
-
 export default function Moliceiro({
   map,
   targetIndex,
   dockedIndex,
+  startIndex,
   joystick,
   onArrive,
   onManualStart,
@@ -392,6 +293,8 @@ export default function Moliceiro({
   map: MapDef;
   targetIndex: number | null;
   dockedIndex: number | null;
+  /** start moored at this port instead of sailing in */
+  startIndex: number | null;
   joystick: { current: { x: number; y: number } };
   onArrive: (index: number) => void;
   onManualStart: () => void;
@@ -441,11 +344,26 @@ export default function Moliceiro({
   const camPos = useRef(new THREE.Vector3(6, 10, 46));
   const camLook = useRef(new THREE.Vector3(0, 1, 30));
 
-  const hasGlb = useHasGlb();
-
   useEffect(() => {
     arrived.current = false;
   }, [targetIndex]);
+
+  // deep link: drop anchor at the requested pier straight away
+  useEffect(() => {
+    if (startIndex === null) return;
+    const port = map.ports[startIndex];
+    const ph = phys.current!;
+    ph.pos.copy(port.point);
+    ph.heading = Math.atan2(port.tangent.x, port.tangent.z);
+    ph.speed = 0;
+    autoT.current = port.t;
+    // already alongside: no route to sail, the arrival fires on the next frame
+    engagedTarget.current = startIndex;
+    route.current = null;
+    arrived.current = false;
+    dockFraming(port, port.point, map.boatScale, camPos.current);
+    camLook.current.copy(port.dockPos).lerp(port.landmarkPos, 0.4).setY(2.1);
+  }, [startIndex, map]);
 
   // drop the player's collider when the scene unmounts (e.g. map switch)
   useEffect(() => {
@@ -521,6 +439,10 @@ export default function Moliceiro({
     };
   }, [gl]);
 
+  // the camera pulls in for the smaller, real-scale boat on the Aveiro map
+  const bs = map.boatScale;
+  const camK = Math.pow(bs, 0.8);
+
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
     const ph = phys.current!;
@@ -570,10 +492,11 @@ export default function Moliceiro({
         }
         const rt = route.current;
         if (rt) {
+          // long canal crossings on the real map: let the autopilot open up
           const v = THREE.MathUtils.clamp(
             Math.min(rt.s + 2, rt.length - rt.s) * 0.9,
             1.6,
-            14
+            rt.length > 150 ? 22 : 14
           );
           rt.s = Math.min(rt.s + v * dt, rt.length);
           const u = THREE.MathUtils.clamp(rt.s / rt.length, 0, 1);
@@ -632,12 +555,12 @@ export default function Moliceiro({
 
       ph.pos.x += Math.sin(ph.heading) * ph.speed * dt;
       ph.pos.z += Math.cos(ph.heading) * ph.speed * dt;
-      if (avoidBoats(ph.pos, 0)) ph.speed *= Math.max(0, 1 - 5 * dt);
+      if (avoidBoats(ph.pos, 0, BOAT_CLEARANCE * bs)) ph.speed *= Math.max(0, 1 - 5 * dt);
       if (map.constrain(ph.pos)) ph.speed *= Math.max(0, 1 - 3 * dt);
 
       // alongside a pier? offer to dock
       let near: number | null = null;
-      let best = DOCK_RANGE;
+      let best = DOCK_RANGE * bs;
       for (let i = 0; i < map.ports.length; i++) {
         const dd = Math.hypot(
           ph.pos.x - map.ports[i].point.x,
@@ -663,22 +586,23 @@ export default function Moliceiro({
     if (group.current) {
       const lean =
         -ph.turn * Math.min(Math.abs(ph.speed) / MAX_SPEED, 1) * 0.14;
-      group.current.position.set(ph.pos.x, Math.sin(time * 1.6) * 0.06 + 0.02, ph.pos.z);
-      group.current.rotation.y = ph.heading;
-      group.current.rotation.z = Math.sin(time * 1.1) * 0.025 + lean;
-      group.current.rotation.x = Math.sin(time * 1.4 + 1) * 0.02;
+      rideWaves(group.current, ph.pos.x, ph.pos.z, ph.heading, time, bs, lean);
     }
 
     // camera: pier framing when docked, otherwise an orbitable chase cam
     const c = cam.current;
     if (dockedIndex !== null) {
       const port = map.ports[dockedIndex];
-      _desired
-        .copy(ph.pos)
-        .addScaledVector(port.outward, -14.5)
-        .addScaledVector(port.tangent, 4.5)
-        .setY(7.4);
-      _lookAt.copy(port.dockPos).setY(1.8);
+      // frame the boat and its landmark together, from a little off-axis
+      // (from higher up over the real city, above the far bank's rooftops)
+      dockFraming(port, ph.pos, bs, _desired);
+      _lookAt.copy(port.dockPos).lerp(port.landmarkPos, 0.4).setY(2.1);
+      // on wide screens the chapter panel covers the right third: aim to the
+      // right of the scene so it sits in the free space on the left
+      if (state.size.width >= 768) {
+        _normal.subVectors(_lookAt, _desired).cross(_UP).normalize();
+        _lookAt.addScaledVector(_normal, 5.5);
+      }
     } else {
       // ease the manual orbit back behind the boat once it's underway
       if (
@@ -689,16 +613,18 @@ export default function Moliceiro({
         c.yawOff = dampAngle(c.yawOff, 0, 1.1, dt);
       }
       const yaw = ph.heading + Math.PI + c.yawOff;
-      const horiz = Math.cos(c.pitch) * c.dist;
+      const dist = c.dist * camK;
+      const horiz = Math.cos(c.pitch) * dist;
       _desired.set(
         ph.pos.x + Math.sin(yaw) * horiz,
-        1.2 + Math.sin(c.pitch) * c.dist,
+        // stay above the rooftops on the real-scale city
+        Math.max(1.2 * bs + Math.sin(c.pitch) * dist, bs < 1 ? 7.5 : 0),
         ph.pos.z + Math.cos(yaw) * horiz
       );
       _lookAt.set(
-        ph.pos.x + Math.sin(ph.heading) * 2.5,
-        1.5,
-        ph.pos.z + Math.cos(ph.heading) * 2.5
+        ph.pos.x + Math.sin(ph.heading) * 2.5 * bs,
+        1.5 * bs,
+        ph.pos.z + Math.cos(ph.heading) * 2.5 * bs
       );
     }
     const posLambda = manual ? 2.4 : 1.6;
@@ -715,22 +641,25 @@ export default function Moliceiro({
 
   return (
     <>
-      <group ref={group}>
-        {hasGlb ? (
-          <Suspense fallback={<ProceduralMoliceiro />}>
-            <GlbMoliceiro />
-          </Suspense>
-        ) : (
-          <ProceduralMoliceiro />
-        )}
+      <group ref={group} scale={bs}>
+        <MoliceiroModel palette={0} />
       </group>
-      <WakeTrail target={group} width={1.6} emit={3.0} />
+      <WakeTrail target={group} width={1.6 * bs} emit={3.0 * bs} />
     </>
   );
 }
 
 /** Two slow boats circling for ambience, following the given closed curve. */
-export function AmbientBoats({ curve }: { curve: THREE.CatmullRomCurve3 }) {
+export function AmbientBoats({
+  curve,
+  scale = 1,
+  center,
+}: {
+  curve: THREE.CatmullRomCurve3;
+  scale?: number;
+  /** centre of the ambient loop, so "inner lane" means inside the loop */
+  center: { x: number; z: number };
+}) {
   const boatA = useRef<THREE.Group>(null);
   const boatB = useRef<THREE.Group>(null);
   const ts = useRef([0.45, 0.78]);
@@ -745,10 +674,10 @@ export function AmbientBoats({ curve }: { curve: THREE.CatmullRomCurve3 }) {
       const p = curve.getPointAt(ts.current[i], _pos);
       const tan = curve.getTangentAt(ts.current[i], _tan);
       const n = _normal.set(-tan.z, 0, tan.x).normalize();
-      if (n.dot(p) < 0) n.negate();
+      if (n.x * (p.x - center.x) + n.z * (p.z - center.z) < 0) n.negate();
       // sail an inner lane so they never overlap a docked moliceiro
-      let bx = p.x - n.x * 2.1;
-      let bz = p.z - n.z * 2.1;
+      let bx = p.x - n.x * 2.1 * scale;
+      let bz = p.z - n.z * 2.1 * scale;
       // yield to the player (slot 0) and the other ambient boat
       const slot = i + 1;
       for (const j of [0, i === 0 ? 2 : 1]) {
@@ -757,8 +686,8 @@ export function AmbientBoats({ curve }: { curve: THREE.CatmullRomCurve3 }) {
         const dx = bx - b.x;
         const dz = bz - b.z;
         const d = Math.hypot(dx, dz);
-        if (d > 0.0001 && d < BOAT_CLEARANCE) {
-          const push = BOAT_CLEARANCE - d;
+        if (d > 0.0001 && d < BOAT_CLEARANCE * scale) {
+          const push = BOAT_CLEARANCE * scale - d;
           bx += (dx / d) * push;
           bz += (dz / d) * push;
         }
@@ -766,8 +695,7 @@ export function AmbientBoats({ curve }: { curve: THREE.CatmullRomCurve3 }) {
       BOATS[slot].x = bx;
       BOATS[slot].z = bz;
       BOATS[slot].active = true;
-      g.position.set(bx, Math.sin(state.clock.elapsedTime * 1.3 + i * 2) * 0.05, bz);
-      g.rotation.y = Math.atan2(tan.x, tan.z);
+      rideWaves(g, bx, bz, Math.atan2(tan.x, tan.z), state.clock.elapsedTime, 0.8 * scale);
     });
   });
 
@@ -778,26 +706,17 @@ export function AmbientBoats({ curve }: { curve: THREE.CatmullRomCurve3 }) {
     };
   }, []);
 
-  const hasGlb = useHasGlb();
-  const boat = (accent: string, accent2: string) =>
-    hasGlb ? (
-      <Suspense fallback={<ProceduralMoliceiro accent={accent} accent2={accent2} />}>
-        <GlbMoliceiro />
-      </Suspense>
-    ) : (
-      <ProceduralMoliceiro accent={accent} accent2={accent2} />
-    );
 
   return (
     <>
-      <group ref={boatA} scale={0.8}>
-        {boat("#2f7fbf", "#f2b705")}
+      <group ref={boatA} scale={0.8 * scale}>
+        <MoliceiroModel palette={1} />
       </group>
-      <group ref={boatB} scale={0.75}>
-        {boat("#3f9d6b", "#d6452e")}
+      <group ref={boatB} scale={0.75 * scale}>
+        <MoliceiroModel palette={2} />
       </group>
-      <WakeTrail target={boatA} width={1.2} emit={2.3} />
-      <WakeTrail target={boatB} width={1.15} emit={2.2} />
+      <WakeTrail target={boatA} width={1.2 * scale} emit={2.3 * scale} />
+      <WakeTrail target={boatB} width={1.15 * scale} emit={2.2 * scale} />
     </>
   );
 }

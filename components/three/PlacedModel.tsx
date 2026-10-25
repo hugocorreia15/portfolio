@@ -1,37 +1,8 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useMemo } from "react";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import { PLACED_MODELS } from "@/lib/placedModels";
-import type { MapId } from "@/lib/maps";
-
-// one probe per file — placements simply skip GLBs that aren't downloaded yet
-const probes = new Map<string, Promise<boolean>>();
-function probe(url: string) {
-  let p = probes.get(url);
-  if (!p) {
-    p = fetch(url, { method: "HEAD" })
-      .then((r) => r.ok)
-      .catch(() => false);
-    probes.set(url, p);
-  }
-  return p;
-}
-
-export function useModelFile(url: string) {
-  const [has, setHas] = useState(false);
-  useEffect(() => {
-    let on = true;
-    probe(url).then((v) => {
-      if (on) setHas(v);
-    });
-    return () => {
-      on = false;
-    };
-  }, [url]);
-  return has;
-}
 
 function Glb({ url, size, y }: { url: string; size: number; y: number }) {
   const { scene } = useGLTF(url);
@@ -59,10 +30,10 @@ function Glb({ url, size, y }: { url: string; size: number; y: number }) {
 }
 
 /**
- * A downloaded Sketchfab model standing in the world. Renders the fallback
- * children (if any) until/unless the GLB exists in public/models.
+ * A model standing in the world, scaled to `size` and grounded; the fallback
+ * children (a procedural stand-in) show while it streams in.
  */
-export function OptionalGlb({
+export function ModelPlacement({
   url,
   position,
   rotY = 0,
@@ -79,8 +50,6 @@ export function OptionalGlb({
   yOffset?: number;
   children?: React.ReactNode;
 }) {
-  const has = useModelFile(url);
-  if (!has) return <>{children}</>;
   return (
     <group position={position} rotation-y={rotY}>
       {islet && (
@@ -89,28 +58,9 @@ export function OptionalGlb({
           <meshStandardMaterial color="#9fae74" roughness={1} />
         </mesh>
       )}
-      <Suspense fallback={children ? <>{children}</> : null}>
+      <Suspense fallback={children ?? null}>
         <Glb url={url} size={size} y={(islet ? 0.1 : 0) + yOffset} />
       </Suspense>
     </group>
-  );
-}
-
-/** All registry placements for the active map. */
-export default function PlacedModels({ map }: { map: MapId }) {
-  return (
-    <>
-      {PLACED_MODELS.filter((m) => m.map === map).map((m, i) => (
-        <OptionalGlb
-          key={`${m.file}-${i}`}
-          url={`/models/${m.file}`}
-          position={m.position}
-          rotY={m.rotY}
-          size={m.size}
-          islet={m.islet}
-          yOffset={m.yOffset}
-        />
-      ))}
-    </>
   );
 }

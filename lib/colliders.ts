@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { BRIDGE_TS, CANAL, PORTS } from "@/lib/ports";
+import { BRIDGE_TS, CANAL, ISLET_TS, PORTS } from "@/lib/ports";
 
 export interface CircleCollider {
   x: number;
@@ -27,8 +27,7 @@ export const COLLIDERS: CircleCollider[] = (() => {
     const pier = port.point.clone().addScaledVector(port.outward, 3.2);
     list.push({ x: pier.x, z: pier.z, r: 0.9 });
   }
-  // keep in sync with the islets in components/three/City.tsx
-  for (const t of [0.255, 0.59, 0.925]) {
+  for (const t of ISLET_TS) {
     const { p, out } = frameAt(t);
     const c = p.clone().addScaledVector(out, 14.5);
     list.push({ x: c.x, z: c.z, r: 5.3 });

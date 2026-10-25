@@ -31,7 +31,10 @@ const VERTEX = /* glsl */ `
   void main() {
     vec3 p = position;
     vec2 grad;
-    float h = waves(p.xy, grad);
+    // waves in world space, so the plane can follow the camera without the
+    // swell sliding along with it (local (x, y) maps to world (x, -z))
+    vec4 w0 = modelMatrix * vec4(position, 1.0);
+    float h = waves(vec2(w0.x, -w0.z), grad);
     p.z += h * 0.34;
     vH = h;
     // plane is rotated -90deg about X, so local (x, y) -> world (x, -z)
@@ -75,6 +78,13 @@ const FRAGMENT = /* glsl */ `
   }
 
   void main() {
+    // past the fog's far distance the water is pure fog colour: skip the work
+    #ifdef USE_FOG
+      if (vFogDepth > fogFar) {
+        gl_FragColor = vec4(fogColor, 1.0);
+        return;
+      }
+    #endif
     // scrolling tileable ripple normal map, two scales blended
     vec3 r1 = texture2D(uRipples, vWorldPos.xz * 0.045 + uTime * vec2(0.014, 0.010)).xyz * 2.0 - 1.0;
     vec3 r2 = texture2D(uRipples, vWorldPos.xz * 0.016 - uTime * vec2(0.008, 0.012)).xyz * 2.0 - 1.0;
@@ -137,8 +147,16 @@ const FRAGMENT = /* glsl */ `
   }
 `;
 
+// the water ends a little past the fog; a cheap fog-coloured skirt covers the rest
+export const WATER_FOG = { near: 48, far: 175 };
+const SIZE = 2 * (WATER_FOG.far + 25);
+const SEGMENTS = 56;
+const CELL = SIZE / SEGMENTS;
+
 export default function Water() {
   const material = useRef<THREE.ShaderMaterial>(null);
+  const mesh = useRef<THREE.Mesh>(null);
+  const skirt = useRef<THREE.Mesh>(null);
   const uniforms = useMemo(
     () => ({
       ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
@@ -154,6 +172,12 @@ export default function Water() {
   );
 
   useFrame((state) => {
+    // follow the camera in whole grid cells, so vertices never swim
+    if (mesh.current) {
+      mesh.current.position.x = Math.round(state.camera.position.x / CELL) * CELL;
+      mesh.current.position.z = Math.round(state.camera.position.z / CELL) * CELL;
+    }
+    skirt.current?.position.set(state.camera.position.x, -0.06, state.camera.position.z);
     if (material.current) {
       const u = material.current.uniforms;
       u.uTime.value = state.clock.elapsedTime;
@@ -166,15 +190,29 @@ export default function Water() {
   });
 
   return (
-    <mesh rotation-x={-Math.PI / 2} position-y={-0.02}>
-      <planeGeometry args={[520, 520, 64, 64]} />
-      <shaderMaterial
-        ref={material}
-        uniforms={uniforms}
-        vertexShader={VERTEX}
-        fragmentShader={FRAGMENT}
-        fog
-      />
-    </mesh>
+    <>
+      {/* drawn after every opaque object (and the boats' hull lids): no water
+          inside the boats, and early-z skips whatever the scenery covers */}
+      <mesh ref={skirt} rotation-x={-Math.PI / 2} frustumCulled={false} renderOrder={2}>
+        <ringGeometry args={[SIZE / 2 - 6, 235, 48, 1]} />
+        <meshBasicMaterial color="#000000" fog />
+      </mesh>
+      <mesh
+        ref={mesh}
+        rotation-x={-Math.PI / 2}
+        position-y={-0.02}
+        frustumCulled={false}
+        renderOrder={2}
+      >
+        <planeGeometry args={[SIZE, SIZE, SEGMENTS, SEGMENTS]} />
+        <shaderMaterial
+          ref={material}
+          uniforms={uniforms}
+          vertexShader={VERTEX}
+          fragmentShader={FRAGMENT}
+          fog
+        />
+      </mesh>
+    </>
   );
 }

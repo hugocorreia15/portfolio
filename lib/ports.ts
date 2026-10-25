@@ -35,31 +35,37 @@ export interface PortDef {
   platformR?: number;
 }
 
-const PORT_SEEDS: Array<
-  Pick<PortDef, "id" | "label" | "caisName" | "t" | "accent">
-> = [
-  { id: "about", label: "About Me", caisName: "Cais da Ria", t: 0.0, accent: "#f59e0b" },
-  { id: "experience", label: "Experience", caisName: "Cais do Rossio", t: 0.17, accent: "#ef4444" },
-  { id: "projects", label: "Projects", caisName: "Cais da Costa Nova", t: 0.34, accent: "#3b82f6" },
-  { id: "skills", label: "Skills", caisName: "Cais das Salinas", t: 0.5, accent: "#10b981" },
-  { id: "education", label: "Education", caisName: "Cais da Universidade", t: 0.67, accent: "#8b5cf6" },
-  { id: "contact", label: "Contact", caisName: "Cais do Farol", t: 0.84, accent: "#ec4899" },
+const PORT_SEEDS: Array<Pick<PortDef, "id" | "label" | "caisName" | "accent">> = [
+  { id: "about", label: "About Me", caisName: "Cais da Ria", accent: "#f59e0b" },
+  { id: "experience", label: "Experience", caisName: "Cais do Rossio", accent: "#ef4444" },
+  { id: "publications", label: "Publications", caisName: "Cais da Fábrica", accent: "#0d9488" },
+  { id: "projects", label: "Projects", caisName: "Cais da Costa Nova", accent: "#3b82f6" },
+  { id: "skills", label: "Skills", caisName: "Cais das Salinas", accent: "#10b981" },
+  { id: "education", label: "Education", caisName: "Cais da Universidade", accent: "#8b5cf6" },
+  { id: "contact", label: "Contact", caisName: "Cais do Farol", accent: "#ec4899" },
 ];
 
-export const PORTS: PortDef[] = PORT_SEEDS.map((seed) => {
-  const point = CANAL.getPointAt(seed.t);
-  const tangent = CANAL.getTangentAt(seed.t).normalize();
+/** Ports sit evenly around the loop; bridges and islets go in the gaps between them. */
+const STEP = 1 / PORT_SEEDS.length;
+
+export const PORTS: PortDef[] = PORT_SEEDS.map((seed, i) => {
+  const t = i * STEP;
+  const point = CANAL.getPointAt(t);
+  const tangent = CANAL.getTangentAt(t).normalize();
   const outward = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
   // the loop is roughly centred on the origin, so "outward" points away from it
   if (outward.dot(point) < 0) outward.negate();
   const dockPos = point.clone().addScaledVector(outward, 4.2);
   const landmarkPos = point.clone().addScaledVector(outward, 11.5);
   const faceIn = Math.atan2(-outward.x, -outward.z);
-  return { ...seed, point, tangent, outward, dockPos, landmarkPos, faceIn };
+  return { ...seed, t, point, tangent, outward, dockPos, landmarkPos, faceIn };
 });
 
-/** Curve parameters where decorative bridges arch over the canal (kept clear of ports). */
-export const BRIDGE_TS = [0.085, 0.425, 0.755];
+/** Curve parameters where bridges arch over the canal, midway between two ports. */
+export const BRIDGE_TS = [0.5, 3.5, 5.5].map((k) => k * STEP);
+
+/** Curve parameters of the small islets off the outer bank (also in the gaps). */
+export const ISLET_TS = [1.5, 4.5, 6.5].map((k) => k * STEP);
 
 export const wrap1 = (t: number) => ((t % 1) + 1) % 1;
 

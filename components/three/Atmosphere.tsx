@@ -4,11 +4,24 @@ import { type ComponentRef, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Sky } from "@react-three/drei";
 import * as THREE from "three";
-import { DAY, advanceDay, setNight } from "@/lib/daynight";
+import { DAY, advanceDay } from "@/lib/daynight";
+import { updateNightMaterials } from "@/lib/nightMaterials";
+import { updateLampLights } from "@/lib/lampLights";
 import { mulberry32 } from "@/lib/ports";
 import { getTexture } from "@/lib/textures";
 
 const _X = new THREE.Vector3(1, 0, 0);
+const _sunPos = new THREE.Vector3();
+const _focus = new THREE.Vector3();
+const _look = new THREE.Vector3();
+const _c = new THREE.Color();
+
+// the sun's shadow frustum covers a square this wide around what the camera
+// looks at, snapped to a grid so the shadows don't shimmer as it follows
+const SHADOW_HALF = 48;
+/** The sky dome rides with the camera, so it fits inside a short far plane. */
+export const SKY_RADIUS = 190;
+const SHADOW_SNAP = 4;
 
 const C_DAY_SKY = new THREE.Color("#bcdcf0");
 const C_DUSK_SKY = new THREE.Color("#e8a25f");
@@ -32,22 +45,35 @@ export function DayNightController() {
   const shadowTimer = useRef(0);
 
   useFrame((state, dt) => {
-    const { scene, gl } = state;
-
-    // the sun moves slowly, so refresh shadows a few times a second, not every
-    // frame — a big saving (one full shadow pass per refresh instead of 60).
-    gl.shadowMap.autoUpdate = false;
-    shadowTimer.current -= dt;
-    if (shadowTimer.current <= 0) {
-      gl.shadowMap.needsUpdate = true;
-      shadowTimer.current = 0.35;
-    }
+    const { scene, gl, camera } = state;
 
     const elev = advanceDay(Math.min(dt, 0.05));
     const { night, sunUp: up, dusk } = DAY;
-    setNight(night > 0.06); // gate the lamp lights to night-time only
-    const sunPos = DAY.sunDir.clone().multiplyScalar(420);
+    updateNightMaterials(night, state.clock.elapsedTime);
+    updateLampLights(camera, night, dt);
+    const sunPos = _sunPos.copy(DAY.sunDir).multiplyScalar(420);
 
+    // the sun moves slowly, so refresh shadows a few times a second, not every
+    // frame — a big saving (one full shadow pass per refresh instead of 60).
+    // Each refresh re-centres the frustum on the ground point the camera looks at.
+    gl.shadowMap.autoUpdate = false;
+    shadowTimer.current -= dt;
+    if (shadowTimer.current <= 0 && sun.current) {
+      gl.shadowMap.needsUpdate = true;
+      shadowTimer.current = 0.35;
+      camera.getWorldDirection(_look);
+      const reach = _look.y < -0.05 ? Math.min(-camera.position.y / _look.y, 60) : 40;
+      _focus.copy(camera.position).addScaledVector(_look, reach);
+      _focus.set(
+        Math.round(_focus.x / SHADOW_SNAP) * SHADOW_SNAP,
+        0,
+        Math.round(_focus.z / SHADOW_SNAP) * SHADOW_SNAP
+      );
+      sun.current.target.position.copy(_focus);
+      sun.current.target.updateMatrixWorld();
+    }
+
+    sky.current?.position.copy(camera.position);
     const skyMat = sky.current?.material as THREE.ShaderMaterial | undefined;
     if (skyMat) {
       skyMat.uniforms.sunPosition.value.copy(sunPos);
@@ -57,15 +83,17 @@ export function DayNightController() {
       skyMat.uniforms.mieDirectionalG.value = 0.86;
     }
 
-    const bg = C_DAY_SKY.clone().lerp(C_DUSK_SKY, dusk).lerp(C_NIGHT_SKY, night);
-    const fogC = C_DAY_FOG.clone().lerp(C_DUSK_FOG, dusk).lerp(C_NIGHT_FOG, night);
-    if (scene.background instanceof THREE.Color) scene.background.copy(bg);
-    if (scene.fog) (scene.fog as THREE.Fog).color.copy(fogC);
+    if (scene.background instanceof THREE.Color) {
+      scene.background.copy(C_DAY_SKY).lerp(C_DUSK_SKY, dusk).lerp(C_NIGHT_SKY, night);
+    }
+    if (scene.fog) {
+      (scene.fog as THREE.Fog).color.copy(C_DAY_FOG).lerp(C_DUSK_FOG, dusk).lerp(C_NIGHT_FOG, night);
+    }
 
     if (sun.current) {
-      sun.current.position.copy(sunPos);
+      sun.current.position.copy(sun.current.target.position).add(sunPos);
       sun.current.intensity = up * 1.95;
-      sun.current.color.copy(C_SUN.clone().lerp(C_SUN_DUSK, dusk));
+      sun.current.color.copy(C_SUN).lerp(C_SUN_DUSK, dusk);
     }
     if (moon.current) {
       moon.current.position.set(-sunPos.x, Math.abs(sunPos.y) * 0.5 + 80, -sunPos.z);
@@ -75,11 +103,11 @@ export function DayNightController() {
       // much dimmer ambient fill at night so the scene (and the boats) go dark
       // away from the lamps, the moon and the lighthouse beam
       hemi.current.intensity = THREE.MathUtils.lerp(0.05, 0.5, up) + night * 0.03;
-      hemi.current.color.copy(C_DAY_SKY.clone().lerp(C_NIGHT_SKY, night));
+      hemi.current.color.copy(C_DAY_SKY).lerp(C_NIGHT_SKY, night);
     }
     if (ambient.current) {
       ambient.current.intensity = THREE.MathUtils.lerp(0.04, 0.24, up) + night * 0.02;
-      ambient.current.color.copy(C_MOON.clone().lerp(C_SUN, up));
+      ambient.current.color.copy(C_MOON).lerp(_c.copy(C_SUN), up);
     }
 
     gl.toneMappingExposure = THREE.MathUtils.lerp(0.5, 1.05, up) + dusk * 0.12;
@@ -94,7 +122,8 @@ export function DayNightController() {
       const ch = Math.cos(e);
       sunDisc.current.position
         .set(Math.sin(azi) * ch, Math.sin(e), Math.cos(azi) * ch)
-        .multiplyScalar(260);
+        .multiplyScalar(SKY_RADIUS)
+        .add(camera.position);
       sunDisc.current.visible = elev > -0.1;
     }
     if (moonDisc.current) {
@@ -103,23 +132,24 @@ export function DayNightController() {
       const ma = azi + Math.PI;
       moonDisc.current.position
         .set(Math.sin(ma) * ch, Math.sin(e), Math.cos(ma) * ch)
-        .multiplyScalar(260);
+        .multiplyScalar(SKY_RADIUS)
+        .add(camera.position);
       moonDisc.current.visible = elev < 0.1;
     }
   });
 
   return (
     <>
-      <Sky ref={sky} distance={3000} />
+      <Sky ref={sky} distance={250} />
       <directionalLight
         ref={sun}
         castShadow
         shadow-mapSize={[1024, 1024]}
-        shadow-camera-left={-75}
-        shadow-camera-right={75}
-        shadow-camera-top={75}
-        shadow-camera-bottom={-75}
-        shadow-camera-far={520}
+        shadow-camera-left={-SHADOW_HALF}
+        shadow-camera-right={SHADOW_HALF}
+        shadow-camera-top={SHADOW_HALF}
+        shadow-camera-bottom={-SHADOW_HALF}
+        shadow-camera-far={900}
         shadow-bias={-0.0005}
         shadow-normalBias={0.6}
       />
@@ -128,10 +158,10 @@ export function DayNightController() {
       <ambientLight ref={ambient} />
       <group ref={sunDisc}>
         <mesh>
-          <sphereGeometry args={[18, 28, 28]} />
+          <sphereGeometry args={[13, 28, 28]} />
           <meshBasicMaterial color="#fff4d0" fog={false} toneMapped={false} />
         </mesh>
-        <sprite scale={[175, 175, 1]}>
+        <sprite scale={[128, 128, 1]}>
           <spriteMaterial
             map={getTexture("foam")}
             color="#ffd05e"
@@ -147,10 +177,10 @@ export function DayNightController() {
       </group>
       <group ref={moonDisc}>
         <mesh>
-          <sphereGeometry args={[13, 28, 28]} />
+          <sphereGeometry args={[9.5, 28, 28]} />
           <meshBasicMaterial color="#eef3ff" fog={false} toneMapped={false} />
         </mesh>
-        <sprite scale={[105, 105, 1]}>
+        <sprite scale={[77, 77, 1]}>
           <spriteMaterial
             map={getTexture("foam")}
             color="#aec6f4"
@@ -181,7 +211,7 @@ export function NightStars() {
     for (let i = 0; i < n; i++) {
       v.set(rnd() - 0.5, rnd() * 0.92 + 0.02, rnd() - 0.5)
         .normalize()
-        .multiplyScalar(600);
+        .multiplyScalar(SKY_RADIUS + 5);
       pos.set([v.x, v.y, v.z], i * 3);
       c.setHSL(0.55 + (rnd() - 0.5) * 0.1, 0.3, 0.7 + rnd() * 0.3);
       col.set([c.r, c.g, c.b], i * 3);
@@ -192,7 +222,9 @@ export function NightStars() {
     return g;
   }, []);
 
+  const points = useRef<THREE.Points>(null);
   useFrame((state) => {
+    points.current?.position.copy(state.camera.position);
     if (mat.current) {
       const tw = 0.82 + 0.18 * Math.sin(state.clock.elapsedTime * 2.5);
       mat.current.opacity = DAY.night * tw;
@@ -200,7 +232,7 @@ export function NightStars() {
   });
 
   return (
-    <points geometry={geom} frustumCulled={false}>
+    <points ref={points} geometry={geom} frustumCulled={false}>
       <pointsMaterial
         ref={mat}
         size={1.9}
@@ -238,9 +270,10 @@ export function ShootingStars() {
     }))
   );
 
-  useFrame((_, dt) => {
+  useFrame((state, dt) => {
     const g = group.current;
     if (!g) return;
+    g.position.copy(state.camera.position);
     timer.current -= dt;
     if (DAY.night > 0.5 && timer.current <= 0) {
       timer.current = 2 + Math.random() * 5;
@@ -250,7 +283,7 @@ export function ShootingStars() {
         s.t = 0;
         s.life = 0.6 + Math.random() * 0.6;
         const az = Math.random() * Math.PI * 2;
-        s.p.set(Math.cos(az) * 200, 110 + Math.random() * 70, Math.sin(az) * 200);
+        s.p.set(Math.cos(az) * 150, 85 + Math.random() * 50, Math.sin(az) * 150);
         s.v
           .set(Math.random() - 0.5, -0.45 - Math.random() * 0.4, Math.random() - 0.5)
           .normalize()
@@ -272,7 +305,7 @@ export function ShootingStars() {
       s.p.addScaledVector(s.v, dt);
       mesh.visible = true;
       mesh.position.copy(s.p);
-      mesh.quaternion.setFromUnitVectors(_X, s.v.clone().normalize());
+      mesh.quaternion.setFromUnitVectors(_X, _look.copy(s.v).normalize());
       const k = 1 - s.t / s.life;
       (mesh.material as THREE.MeshBasicMaterial).opacity = Math.sin(k * Math.PI) * DAY.night;
     });

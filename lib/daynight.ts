@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from "react";
 import * as THREE from "three";
 
 /** Seconds for one full day → night → day loop (≈10 min of daylight). */
@@ -27,30 +26,6 @@ export const BEACON = {
   dir: 0, // world heading of the beam, atan2(x, z)
   on: 0, // 0..1 night intensity
 };
-
-// shared "is it night" flag — lamps mount their point lights only at night, so
-// the renderer's per-fragment light loop stays short during the day
-let _night = false;
-const _nightSubs = new Set<() => void>();
-export function setNight(v: boolean) {
-  if (v === _night) return;
-  _night = v;
-  _nightSubs.forEach((f) => f());
-}
-function subscribeNight(cb: () => void) {
-  _nightSubs.add(cb);
-  return () => {
-    _nightSubs.delete(cb);
-  };
-}
-/** Subscribe a component to the night flag (flips at most twice per cycle). */
-export function useIsNight() {
-  return useSyncExternalStore(
-    subscribeNight,
-    () => _night,
-    () => false
-  );
-}
 
 /** Advance the clock (unless paused) and recompute the sun. Returns elevation. */
 export function advanceDay(dt: number) {

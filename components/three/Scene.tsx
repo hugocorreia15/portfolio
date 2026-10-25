@@ -1,26 +1,59 @@
 "use client";
 
-import { Canvas } from "@react-three/fiber";
-import { Environment, Lightformer, Stats } from "@react-three/drei";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { Environment, Lightformer, PerformanceMonitor, Stats } from "@react-three/drei";
 import * as THREE from "three";
 import type { MapDef } from "@/lib/maps";
-import Water from "@/components/three/Water";
+import Water, { WATER_FOG } from "@/components/three/Water";
 import City from "@/components/three/City";
-import AveiroCity from "@/components/three/AveiroCity";
+import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import Landmark from "@/components/three/Landmarks";
 import PortDock from "@/components/three/PortDock";
 import Moliceiro, { AmbientBoats } from "@/components/three/Moliceiro";
-import PlacedModels from "@/components/three/PlacedModel";
+import { preloadModels } from "@/lib/models";
+import { installLampLighting } from "@/lib/lampLights";
 import {
   DayNightController,
   NightStars,
   ShootingStars,
 } from "@/components/three/Atmosphere";
 
+preloadModels();
+installLampLighting();
+
+// the real-city geometry is a few hundred KB: only fetch it for that map
+const AveiroCity = lazy(() => import("@/components/three/AveiroCity"));
+
+/** ?stats: also log draw calls and triangles every few seconds. */
+function RenderInfo() {
+  const next = useRef(0);
+  useFrame(({ gl, clock, scene }) => {
+    if (clock.elapsedTime < next.current) return;
+    next.current = clock.elapsedTime + 3;
+    const { calls, triangles } = gl.info.render;
+    console.info(`[render] ${calls} calls · ${(triangles / 1000).toFixed(0)}k tris · ${gl.info.programs?.length ?? 0} programs`);
+    // heaviest meshes in the scene (whole scene, not just what's on screen)
+    const heavy = new Map<string, number>();
+    scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || !m.visible) return;
+      const g = m.geometry;
+      const tris = (g.index ? g.index.count : g.attributes.position.count) / 3;
+      const n = (m as THREE.InstancedMesh).isInstancedMesh ? (m as THREE.InstancedMesh).count : 1;
+      const key = `${m.geometry.type}:${(m.material as THREE.Material).type}:${Math.round(tris)}`;
+      heavy.set(key, (heavy.get(key) ?? 0) + tris * n);
+    });
+    const top = [...heavy.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+    console.info(`[heavy] ${top.map(([k, v]) => `${k}=${(v / 1000).toFixed(0)}k`).join(" | ")}`);
+  });
+  return null;
+}
+
 export default function Scene({
   map,
   targetIndex,
   dockedIndex,
+  startIndex,
   joystick,
   onArrive,
   onNavigate,
@@ -31,6 +64,7 @@ export default function Scene({
   map: MapDef;
   targetIndex: number | null;
   dockedIndex: number | null;
+  startIndex: number | null;
   joystick: { current: { x: number; y: number } };
   onArrive: (index: number) => void;
   onNavigate: (index: number) => void;
@@ -39,20 +73,39 @@ export default function Scene({
   onRequestDock: (index: number) => void;
 }) {
   // add ?stats to the URL to show a live FPS / frame-time overlay
+  // resolution follows the frame rate: sharper on capable machines, softer when
+  // the GPU struggles (the monitor nudges `factor` between 0 and 1)
+  const maxDpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio, 1.6) : 1;
+  const [dpr, setDpr] = useState(Math.min(maxDpr, 1.15));
+
+  const ambientCenter = useMemo(() => {
+    const pts = map.ambientCurve.getPoints(16);
+    return {
+      x: pts.reduce((a, p) => a + p.x, 0) / pts.length,
+      z: pts.reduce((a, p) => a + p.z, 0) / pts.length,
+    };
+  }, [map]);
   const showStats =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).has("stats");
   return (
     <Canvas
       shadows="percentage"
-      dpr={[1, 1.15]}
+      dpr={dpr}
       gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1 }}
-      camera={{ position: [6, 10, 46], fov: 42, near: 0.5, far: 1600 }}
+      camera={{ position: [6, 10, 46], fov: 42, near: 0.5, far: 240 }}
       className="!fixed inset-0"
     >
       {showStats && <Stats />}
+      {showStats && <RenderInfo />}
+      <PerformanceMonitor
+        factor={0.5}
+        flipflops={4}
+        onChange={({ factor }) => setDpr(Math.round((0.7 + (maxDpr - 0.7) * factor) * 20) / 20)}
+        onFallback={() => setDpr(0.75)}
+      />
       <color attach="background" args={["#cfe6f2"]} />
-      <fog attach="fog" args={["#cfe6f2", 55, 185]} />
+      <fog attach="fog" args={["#cfe6f2", WATER_FOG.near, WATER_FOG.far]} />
 
       {/* sun, moon, sky, fog and lights, all driven through the day-night loop */}
       <DayNightController />
@@ -67,8 +120,13 @@ export default function Scene({
       </Environment>
 
       <Water />
-      {map.id === "island" ? <City /> : <AveiroCity />}
-      <PlacedModels map={map.id} />
+      {map.id === "island" ? (
+        <City />
+      ) : (
+        <Suspense fallback={null}>
+          <AveiroCity />
+        </Suspense>
+      )}
       {map.ports.map((port, i) => (
         <group key={port.id}>
           <Landmark port={port} />
@@ -76,6 +134,9 @@ export default function Scene({
             port={port}
             index={i}
             active={dockedIndex === i}
+            targeted={targetIndex === i}
+            quayside={map.kind === "network"}
+            scale={map.boatScale}
             onSelect={() => onNavigate(i)}
           />
         </group>
@@ -84,13 +145,14 @@ export default function Scene({
         map={map}
         targetIndex={targetIndex}
         dockedIndex={dockedIndex}
+        startIndex={startIndex}
         joystick={joystick}
         onArrive={onArrive}
         onManualStart={onManualStart}
         onNearPort={onNearPort}
         onRequestDock={onRequestDock}
       />
-      <AmbientBoats curve={map.ambientCurve} />
+      <AmbientBoats curve={map.ambientCurve} scale={map.boatScale} center={ambientCenter} />
     </Canvas>
   );
 }
