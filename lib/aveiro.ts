@@ -1,13 +1,16 @@
 import * as THREE from "three";
 import type { PortDef } from "@/lib/ports";
-import canalData from "@/data/aveiro-canals.json";
+import network from "@/data/aveiro-network.json";
 
 /**
- * The real Aveiro canal network, baked from OpenStreetMap by
- * scripts/fetch-aveiro-canals.mjs (data © OpenStreetMap contributors, ODbL).
- * Coordinates are world units (0.12 u/m), origin at the Praça Humberto
- * Delgado, north = -z. Channel half-widths are gameplay-sized, not to scale.
+ * The real Aveiro canal network (centrelines from scripts/fetch-aveiro-canals.mjs,
+ * rescaled by scripts/bake-aveiro.py; data © OpenStreetMap contributors, ODbL).
+ * World units are 0.3 u/m — real scale for the city — with the origin at the
+ * Praça Humberto Delgado and north = -z. Costa Nova and the Barra, ~7 km west
+ * in reality, sit on stylised spits at the edge of the ria.
  */
+
+export const AVEIRO_REGION = network.region as [number, number, number, number];
 
 interface BakedEdge {
   name?: string;
@@ -19,8 +22,8 @@ interface BakedPoi {
   z: number;
 }
 
-const BAKED_EDGES = canalData.edges as BakedEdge[];
-const POIS = canalData.pois as BakedPoi[];
+const BAKED_EDGES = network.edges as BakedEdge[];
+const POIS = network.pois as BakedPoi[];
 
 const V3 = (x: number, z: number) => new THREE.Vector3(x, 0, z);
 
@@ -42,20 +45,17 @@ export interface Channel {
   city: boolean;
 }
 
+// navigable half-widths: the baked water is at least this wide (scripts/bake-aveiro.py)
 const HALFW_BY_NAME: Array<[RegExp, number]> = [
-  [/Côjo/i, 5.5],
-  [/Pirâmides/i, 6],
-  [/São Roque/i, 4.8],
-  [/Principal/i, 14],
-  [/Moliceiros|Paraíso|Esteiro/i, 4.5],
-  [/Cale da Vala/i, 5],
+  [/Principal|Cale da Vala/i, 9],
+  [/Côjo|Pirâmides|São Roque|Moliceiros|Paraíso/i, 3.6],
 ];
 
 function halfWFor(name?: string) {
   if (name) {
     for (const [re, w] of HALFW_BY_NAME) if (re.test(name)) return w;
   }
-  return 4.8;
+  return 3.6;
 }
 
 export const CHANNELS: Channel[] = [
@@ -71,26 +71,20 @@ export const CHANNELS: Channel[] = [
   // the lake and the open ria are not OSM waterway centrelines — added by hand
   {
     name: "Lago da Fonte Nova",
-    pts: [V3(101.49, 14.02), V3(97, 28), V3(93, 38)],
-    halfW: 8,
-    city: false,
-  },
-  {
-    name: "Ria — canal de Ovar",
-    pts: [V3(-134.29, -39.7), V3(-160, -15)],
-    halfW: 20,
+    pts: [V3(253.72, 35.05), V3(245, 57), V3(238, 76)],
+    halfW: 4.5,
     city: false,
   },
   {
     name: "Ria — Costa Nova",
-    pts: [V3(-160, -15), V3(-165, 25)],
-    halfW: 14,
+    pts: [V3(-335.72, -99.25), V3(-330, -30), V3(-338, 55)],
+    halfW: 12,
     city: false,
   },
   {
     name: "Ria — Barra",
-    pts: [V3(-160, -15), V3(-185, -25)],
-    halfW: 12,
+    pts: [V3(-335.72, -99.25), V3(-348, -150)],
+    halfW: 10,
     city: false,
   },
 ];
@@ -181,9 +175,10 @@ function locate(pos: THREE.Vector3) {
 const SEEDS: Array<Pick<PortDef, "id" | "label" | "caisName" | "accent">> = [
   { id: "about", label: "About Me", caisName: "Praça do Peixe", accent: "#f59e0b" },
   { id: "experience", label: "Experience", caisName: "Cais do Rossio", accent: "#ef4444" },
+  { id: "publications", label: "Publications", caisName: "Centro de Congressos", accent: "#0d9488" },
   { id: "projects", label: "Projects", caisName: "Costa Nova", accent: "#3b82f6" },
   { id: "skills", label: "Skills", caisName: "Marinha da Troncalhada", accent: "#10b981" },
-  { id: "education", label: "Education", caisName: "Cais da Fonte Nova", accent: "#8b5cf6" },
+  { id: "education", label: "Education", caisName: "Cais do Côjo", accent: "#8b5cf6" },
   { id: "contact", label: "Contact", caisName: "Farol da Barra", accent: "#ec4899" },
 ];
 
@@ -196,6 +191,8 @@ function anchoredPort(
     outTo?: THREE.Vector3;
     landmarkDist?: number;
     platformR?: number;
+    /** moor this far off the centreline, alongside the quay */
+    moor?: number;
   } = {}
 ): PortDef {
   const loc = locate(anchor);
@@ -206,6 +203,7 @@ function anchoredPort(
   if (outward.lengthSq() < 0.05) outward.set(0, 0, 1);
   outward.normalize();
   if (opts.flipOut) outward.negate();
+  point.addScaledVector(outward, opts.moor ?? 1.6);
   const tangent = new THREE.Vector3(-outward.z, 0, outward.x);
   return {
     ...seed,
@@ -213,33 +211,33 @@ function anchoredPort(
     point,
     tangent,
     outward,
-    dockPos: point.clone().addScaledVector(outward, 4.2),
-    landmarkPos: point.clone().addScaledVector(outward, opts.landmarkDist ?? 11.5),
+    dockPos: point.clone().addScaledVector(outward, 3.2),
+    landmarkPos: point.clone().addScaledVector(outward, opts.landmarkDist ?? 9),
     faceIn: Math.atan2(-outward.x, -outward.z),
     platformR: opts.platformR,
   };
 }
 
-const A_PEIXE = poi(/Praça do Peixe/) ?? V3(-15.6, -22.4);
-const A_ARTENOVA = poi(/Museu Arte Nova/) ?? V3(-18.3, -16);
-const A_TRONCALHADA = poi(/Troncalhada/) ?? V3(-93.1, -46.6);
-const A_LAGO = poi(/Lago da Fonte Nova/) ?? V3(93.3, 23.3);
-const A_CAIS_FN = poi(/Cais da Fonte Nova/) ?? V3(101.3, 44.5);
-const A_CONGRESSO = poi(/Câmara Municipal.*Congressos/) ?? V3(103.8, 36.2);
-const A_HUMBERTO = poi(/Humberto Delgado/) ?? V3(1.6, -9.9);
+const A_PEIXE = poi(/Praça do Peixe/) ?? V3(-39, -56);
+const A_ARTENOVA = poi(/Museu Arte Nova/) ?? V3(-45.8, -39.9);
+const A_TRONCALHADA = poi(/Troncalhada/) ?? V3(-232.7, -116.4);
+const A_CONGRESSO = poi(/Câmara Municipal.*Congressos/) ?? V3(259.4, 90.5);
+const A_HUMBERTO = poi(/Humberto Delgado/) ?? V3(3.9, -24.6);
 
 export const AVEIRO_PORTS: PortDef[] = [
-  anchoredPort(SEEDS[0], A_PEIXE, { platformR: 5.5, landmarkDist: 10 }),
-  // the Art Nouveau row faces the canal — landmark on the open south bank
-  anchoredPort(SEEDS[1], A_ARTENOVA, { flipOut: true, platformR: 5.5, landmarkDist: 10 }),
-  anchoredPort(SEEDS[2], V3(-165, 25), { outTo: V3(-172, 38) }),
-  anchoredPort(SEEDS[3], A_TRONCALHADA, { landmarkDist: 12 }),
-  anchoredPort(SEEDS[4], A_LAGO, { outTo: A_CAIS_FN, platformR: 6, landmarkDist: 14 }),
-  anchoredPort(SEEDS[5], V3(-185, -25), { outTo: V3(-196, -30) }),
+  anchoredPort(SEEDS[0], A_PEIXE, { platformR: 5.5, landmarkDist: 8.6 }),
+  anchoredPort(SEEDS[1], A_ARTENOVA, { platformR: 5.5, landmarkDist: 8.6 }),
+  // the old ceramics factory, today's congress centre, by the Fonte Nova lake
+  anchoredPort(SEEDS[2], A_CONGRESSO, { platformR: 7, landmarkDist: 11, moor: 2.6 }),
+  anchoredPort(SEEDS[3], V3(-338, 55), { outTo: V3(-380, 62), landmarkDist: 24, moor: 6 }),
+  anchoredPort(SEEDS[4], A_TRONCALHADA, { landmarkDist: 9.5 }),
+  // south bank of the Côjo, on the side of the university campus
+  anchoredPort(SEEDS[5], V3(125, -24), { outTo: V3(128, -60), platformR: 6, landmarkDist: 9 }),
+  anchoredPort(SEEDS[6], V3(-348, -150), { outTo: V3(-390, -158), landmarkDist: 22, moor: 5 }),
 ];
 
 const startLoc = locate(A_HUMBERTO);
-const startS = Math.max(startLoc.s - 14, 6);
+const startS = Math.max(startLoc.s - 20, 6);
 const startPos = pointAtEdge(EDGES[startLoc.e], startS, new THREE.Vector3());
 const startAhead = pointAtEdge(EDGES[startLoc.e], startS + 2, new THREE.Vector3());
 export const AVEIRO_START = {
@@ -320,6 +318,7 @@ export function buildAveiroRoute(
     pts.push(...slicePts(eB, entry === eB.aKey ? 0 : eB.length, B.s).slice(1));
   }
 
+  pts.push(AVEIRO_PORTS[portIndex].point.clone());
   const clean: THREE.Vector3[] = [];
   for (const p of pts) {
     if (!clean.length || clean[clean.length - 1].distanceTo(p) > 0.6) clean.push(p);
@@ -332,11 +331,12 @@ export function buildAveiroRoute(
 
 // ---------------------------------------------------------------- constraint
 
+/** Salt-marsh islets dotting the stylised open ria. */
 export const MARSH_ISLETS: Array<{ x: number; z: number; r: number }> = [
-  { x: -120, z: -12, r: 5 },
-  { x: -143, z: 8, r: 6 },
-  { x: -152, z: -50, r: 5 },
-  { x: -112, z: -40, r: 4 },
+  { x: -372, z: -40, r: 9 },
+  { x: -305, z: 92, r: 7 },
+  { x: -392, z: -230, r: 11 },
+  { x: -300, z: -40, r: 5 },
 ];
 
 const KEEPOUTS: Array<{ x: number; z: number; r: number }> = [
@@ -347,7 +347,8 @@ const KEEPOUTS: Array<{ x: number; z: number; r: number }> = [
   ...MARSH_ISLETS.map((m) => ({ ...m, r: m.r + 1.2 })),
 ];
 
-const BANK_MARGIN = 1.6;
+const BANK_MARGIN = 1.1;
+const HULL_R = 1.3; // the boat sails at 0.62 scale on this map
 
 export function constrainAveiro(pos: THREE.Vector3): boolean {
   let bestDepth = -Infinity;
@@ -392,7 +393,7 @@ export function constrainAveiro(pos: THREE.Vector3): boolean {
   for (const c of KEEPOUTS) {
     const dx = pos.x - c.x;
     const dz = pos.z - c.z;
-    const min = c.r + 2.0;
+    const min = c.r + HULL_R;
     const d2 = dx * dx + dz * dz;
     if (d2 < min * min) {
       const d = Math.sqrt(d2) || 0.001;
@@ -416,17 +417,18 @@ export interface BridgeDef {
 /** Real bridges from OSM POIs, snapped onto the canal centrelines. */
 export const AVEIRO_BRIDGES: BridgeDef[] = (
   [
-    [/Humberto Delgado/, 14],
-    [/Ponte da Dobadoura/, 3.5],
-    [/Ponte de São João/, 3],
-    [/Ponte do Canal das Pirâmides/, 4],
+    [/Humberto Delgado/, 16],
+    [/Ponte da Dobadoura/, 5],
+    [/Ponte de São João/, 4.5],
+    [/Ponte dos Botirões/, 4.5],
+    [/Ponte do Canal das Pirâmides/, 5],
   ] as Array<[RegExp, number]>
 )
   .map(([re, span]) => {
     const a = poi(re);
     if (!a) return null;
     const loc = locate(a);
-    if (loc.d > 12) return null;
+    if (loc.d > 10) return null;
     const e = EDGES[loc.e];
     const s = THREE.MathUtils.clamp(loc.s, 9, e.length - 9);
     const p = pointAtEdge(e, s, new THREE.Vector3());
@@ -440,11 +442,9 @@ export const AVEIRO_BRIDGES: BridgeDef[] = (
   })
   .filter((b): b is BridgeDef => b !== null);
 
-export const CONGRESS_POS: [number, number, number] = [A_CONGRESSO.x, 0.7, A_CONGRESSO.z];
-export const SALINAS_CENTER: [number, number] = [A_TRONCALHADA.x, A_TRONCALHADA.z];
 
 export const AVEIRO_AMBIENT = new THREE.CatmullRomCurve3(
-  [V3(-122, -30), V3(-140, -48), V3(-158, -30), V3(-140, -12)],
+  [V3(-322, -70), V3(-352, -125), V3(-388, -95), V3(-358, -30)],
   true,
   "centripetal"
 );

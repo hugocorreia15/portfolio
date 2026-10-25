@@ -1,0 +1,483 @@
+{
+ "source": "OpenStreetMap contributors (ODbL)",
+ "unitsPerMetre": 0.3,
+ "origin": {
+  "lat": 40.6406,
+  "lon": -8.6538
+ },
+ "region": [
+  -420.0,
+  -300.0,
+  330.0,
+  220.0
+ ],
+ "edges": [
+  {
+   "name": "Cale da Vala",
+   "pts": [
+    [
+     -244.35,
+     -190.07
+    ],
+    [
+     -266.48,
+     -257.65
+    ],
+    [
+     -284.73,
+     -256.28
+    ],
+    [
+     -349.88,
+     -268.32
+    ]
+   ]
+  },
+  {
+   "name": "Canal Principal",
+   "pts": [
+    [
+     -244.35,
+     -190.07
+    ],
+    [
+     -267.23,
+     -156.9
+    ],
+    [
+     -300.38,
+     -126.42
+    ],
+    [
+     -335.72,
+     -99.25
+    ]
+   ]
+  },
+  {
+   "name": "Canal do Para\u00edso",
+   "pts": [
+    [
+     -114.7,
+     31.55
+    ],
+    [
+     -122.27,
+     39.88
+    ],
+    [
+     -146.45,
+     79.38
+    ],
+    [
+     -171.6,
+     111.15
+    ],
+    [
+     -178.72,
+     111.15
+    ],
+    [
+     -187.43,
+     108.42
+    ],
+    [
+     -194.77,
+     110.28
+    ],
+    [
+     -222.15,
+     141.53
+    ],
+    [
+     -229.18,
+     146.82
+    ],
+    [
+     -247.93,
+     152.55
+    ],
+    [
+     -254.3,
+     157.03
+    ]
+   ]
+  },
+  {
+   "name": "Canal dos Moliceiros",
+   "pts": [
+    [
+     -86.25,
+     56.48
+    ],
+    [
+     -114.7,
+     31.55
+    ]
+   ]
+  },
+  {
+   "name": "Canal do Para\u00edso",
+   "pts": [
+    [
+     -114.7,
+     31.55
+    ],
+    [
+     -80.5,
+     -15.08
+    ]
+   ]
+  },
+  {
+   "name": "Canal do C\u00f4jo",
+   "pts": [
+    [
+     253.72,
+     35.05
+    ],
+    [
+     241.32,
+     50.25
+    ],
+    [
+     231.88,
+     50.88
+    ],
+    [
+     212.07,
+     32.65
+    ],
+    [
+     149.6,
+     -9.47
+    ],
+    [
+     94.47,
+     -33.6
+    ],
+    [
+     84.65,
+     -34.12
+    ],
+    [
+     43.35,
+     -22.97
+    ],
+    [
+     -14.12,
+     -27.03
+    ],
+    [
+     -80.5,
+     -15.08
+    ]
+   ]
+  },
+  {
+   "name": "Canal de S\u00e3o Roque",
+   "pts": [
+    [
+     -44.5,
+     -72.55
+    ],
+    [
+     -63.25,
+     -112.25
+    ],
+    [
+     -67.33,
+     -117.27
+    ],
+    [
+     -117.07,
+     -78.3
+    ],
+    [
+     -123.6,
+     -71.33
+    ]
+   ]
+  },
+  {
+   "name": "Canal das Pir\u00e2mides",
+   "pts": [
+    [
+     -80.5,
+     -15.08
+    ],
+    [
+     -83.77,
+     -17.48
+    ],
+    [
+     -114.38,
+     -61.73
+    ],
+    [
+     -123.6,
+     -71.33
+    ]
+   ]
+  },
+  {
+   "name": "Canal das Pir\u00e2mides",
+   "pts": [
+    [
+     -123.6,
+     -71.33
+    ],
+    [
+     -233.65,
+     -185.85
+    ],
+    [
+     -244.35,
+     -190.07
+    ]
+   ]
+  }
+ ],
+ "pois": [
+  {
+   "name": "Ponte das Agras",
+   "x": 535.28,
+   "z": -308.2
+  },
+  {
+   "name": "Ponte das Agras",
+   "x": 532.55,
+   "z": -307.43
+  },
+  {
+   "name": "Museu Arte Nova",
+   "x": -45.8,
+   "z": -39.93
+  },
+  {
+   "name": "Pra\u00e7a do Peixe",
+   "x": -39.0,
+   "z": -55.95
+  },
+  {
+   "name": "Casa de Ch\u00e1 Arte Nova",
+   "x": -45.67,
+   "z": -44.92
+  },
+  {
+   "name": "Ponte das Agras",
+   "x": 536.0,
+   "z": -303.95
+  },
+  {
+   "name": "Ponte das Agras",
+   "x": 529.62,
+   "z": -305.4
+  },
+  {
+   "name": "C\u00e2mara Municipal de Aveiro - Edif\u00edcio Centro de Congressos",
+   "x": 259.43,
+   "z": 90.45
+  },
+  {
+   "name": "Ponte da Ribeira",
+   "x": 356.42,
+   "z": 83.3
+  },
+  {
+   "name": "Fonte Nova",
+   "x": 208.17,
+   "z": -21.07
+  },
+  {
+   "name": "Ponte do Po\u00e7o de S. Thiago - Valle do Vouga",
+   "x": 332.9,
+   "z": -117.3
+  },
+  {
+   "name": "Ponte da Dobadoura",
+   "x": -82.95,
+   "z": -7.85
+  },
+  {
+   "name": "Ponte da Dobadoura",
+   "x": -86.93,
+   "z": -11.38
+  },
+  {
+   "name": "Ponte de S\u00e3o Jo\u00e3o",
+   "x": -118.95,
+   "z": -74.57
+  },
+  {
+   "name": "Centro de Congressos de Aveiro",
+   "x": 559.38,
+   "z": 221.3
+  },
+  {
+   "name": "Largo da Pra\u00e7a do Peixe",
+   "x": -45.6,
+   "z": -58.62
+  },
+  {
+   "name": "Cais da Fonte Nova",
+   "x": 253.25,
+   "z": 111.2
+  },
+  {
+   "name": "Fonte Nova",
+   "x": 217.45,
+   "z": 25.58
+  },
+  {
+   "name": "Ponte do Canal das Pir\u00e2mides",
+   "x": -213.3,
+   "z": -166.02
+  },
+  {
+   "name": "Ponte do Canal das Pir\u00e2mides",
+   "x": -217.7,
+   "z": -161.62
+  },
+  {
+   "name": "Ponte do Canal das Pir\u00e2mides",
+   "x": -206.7,
+   "z": -171.57
+  },
+  {
+   "name": "Ponte dos Botir\u00f5es",
+   "x": -66.42,
+   "z": -116.68
+  },
+  {
+   "name": "Ponte dos Carcavelos",
+   "x": -17.73,
+   "z": -155.38
+  },
+  {
+   "name": "Ponte da Ribeira",
+   "x": 356.35,
+   "z": 79.42
+  },
+  {
+   "name": "Rua da Ponte de Pau",
+   "x": 126.62,
+   "z": -8.03
+  },
+  {
+   "name": "Ecomuseu Marinha da Troncalhada",
+   "x": -232.7,
+   "z": -116.4
+  },
+  {
+   "name": "Ponte dos Botir\u00f5es",
+   "x": -60.53,
+   "z": -112.35
+  },
+  {
+   "name": "Ponte dos Botir\u00f5es",
+   "x": -70.95,
+   "z": -110.23
+  },
+  {
+   "name": "Rua da Ponte de Pau",
+   "x": 132.85,
+   "z": 1.5
+  },
+  {
+   "name": "Rua da Ponte de Pau",
+   "x": 134.67,
+   "z": -0.58
+  },
+  {
+   "name": "Ponte da Dobadoura",
+   "x": -77.6,
+   "z": -4.17
+  },
+  {
+   "name": "Ponte da Dobadoura",
+   "x": -73.75,
+   "z": -3.3
+  },
+  {
+   "name": "Ponte da Dobadoura",
+   "x": -69.33,
+   "z": -4.15
+  },
+  {
+   "name": "Ponte da Dobadoura",
+   "x": -76.22,
+   "z": -4.85
+  },
+  {
+   "name": "Ponte da Dobadoura",
+   "x": -74.28,
+   "z": -2.48
+  },
+  {
+   "name": "Ponte da Dobadoura",
+   "x": -74.12,
+   "z": -3.38
+  },
+  {
+   "name": "Ponte da Dobadoura",
+   "x": -70.53,
+   "z": -2.1
+  },
+  {
+   "name": "Ponte de S\u00e3o Jo\u00e3o",
+   "x": -111.93,
+   "z": -68.12
+  },
+  {
+   "name": "Ponte dos Boitr\u00f5es",
+   "x": -69.25,
+   "z": -120.17
+  },
+  {
+   "name": "Cais da Fonte Nova",
+   "x": 254.03,
+   "z": 64.6
+  },
+  {
+   "name": "Parque Fonte Nova",
+   "x": 224.0,
+   "z": 15.85
+  },
+  {
+   "name": "Jardim do Rossio",
+   "x": -67.33,
+   "z": -43.32
+  },
+  {
+   "name": "Pra\u00e7a General Humberto Delgado",
+   "x": 3.88,
+   "z": -24.62
+  },
+  {
+   "name": "Ponte de S\u00e3o Jo\u00e3o",
+   "x": -118.9,
+   "z": -74.62
+  },
+  {
+   "name": "Ponte da Agra",
+   "x": 361.53,
+   "z": 567.75
+  },
+  {
+   "name": "Lago da Fonte Nova",
+   "x": 233.23,
+   "z": 58.12
+  },
+  {
+   "name": "Largo da Pra\u00e7a do Peixe",
+   "x": -39.1,
+   "z": -60.12
+  },
+  {
+   "name": "Ponte das Agras",
+   "x": 532.8,
+   "z": -306.08
+  }
+ ]
+}

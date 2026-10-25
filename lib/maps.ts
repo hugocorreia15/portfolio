@@ -3,6 +3,7 @@ import { CANAL, PORTS, type PortDef } from "@/lib/ports";
 import { resolveCollisions } from "@/lib/colliders";
 import {
   AVEIRO_AMBIENT,
+  AVEIRO_REGION,
   AVEIRO_PORTS,
   AVEIRO_START,
   buildAveiroRoute,
@@ -19,6 +20,10 @@ interface MapBase {
   /** push pos back into legal water; true when something was hit */
   constrain: (pos: THREE.Vector3) => boolean;
   ambientCurve: THREE.CatmullRomCurve3;
+  /** size of the moliceiro relative to the island map (Aveiro is at real scale) */
+  boatScale: number;
+  /** rough extent of the world: clouds, gulls and the water plane follow it */
+  bounds: { cx: number; cz: number; r: number };
   /** shown in the toggle but not yet selectable */
   comingSoon?: boolean;
 }
@@ -50,16 +55,23 @@ export const MAPS: Record<MapId, MapDef> = {
     },
     constrain: resolveCollisions,
     ambientCurve: CANAL,
+    boatScale: 1,
+    bounds: { cx: 0, cz: 0, r: 70 },
   },
   aveiro: {
     id: "aveiro",
     label: "Aveiro",
-    comingSoon: true,
     kind: "network",
     ports: AVEIRO_PORTS,
     buildRoute: buildAveiroRoute,
     start: AVEIRO_START,
     constrain: constrainAveiro,
     ambientCurve: AVEIRO_AMBIENT,
+    boatScale: 0.62,
+    bounds: {
+      cx: (AVEIRO_REGION[0] + AVEIRO_REGION[2]) / 2,
+      cz: (AVEIRO_REGION[1] + AVEIRO_REGION[3]) / 2,
+      r: Math.hypot(AVEIRO_REGION[2] - AVEIRO_REGION[0], AVEIRO_REGION[3] - AVEIRO_REGION[1]) / 2,
+    },
   },
 };
