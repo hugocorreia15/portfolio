@@ -19,6 +19,8 @@ import { GlbInstances, LampInstances, type PropPlacement } from "@/components/th
 import {
   Buildings,
   getFootprintFacadeMaterial,
+  getFootprintSpillMaterial,
+  pushSpill,
   pickTint,
   RoofInstances,
   type RoofItem,
@@ -153,10 +155,13 @@ const STYLE_TINTS: Record<FacadeStyle, readonly string[]> = {
 
 /** Blocks are merged per facade style and per cell, so off-screen cells are culled. */
 const CELL = 120;
+/** Window light reaches less far out in the narrow city streets. */
+const SPILL_AVEIRO = 1.7;
 
 interface CityChunk {
   key: string;
   walls: Array<{ style: FacadeStyle; geometry: THREE.BufferGeometry }>;
+  spill: THREE.BufferGeometry;
   tiles: THREE.BufferGeometry;
   flat: THREE.BufferGeometry;
   roofs: RoofItem[];
@@ -164,7 +169,8 @@ interface CityChunk {
 
 function buildCity(): CityChunk[] {
   type Acc = { pos: number[]; nor: number[]; uv: number[]; col: number[]; seed: number[] };
-  type Raw = { walls: Map<FacadeStyle, Acc>; tiles: number[]; flat: number[]; roofs: RoofItem[] };
+  type Spill = { pos: number[]; spill: number[]; info: number[] };
+  type Raw = { walls: Map<FacadeStyle, Acc>; spill: Spill; tiles: number[]; flat: number[]; roofs: RoofItem[] };
   const chunks = new Map<string, Raw>();
   const c = new THREE.Color();
 
@@ -177,7 +183,7 @@ function buildCity(): CityChunk[] {
     const key = `${Math.floor(cx / CELL)}:${Math.floor(cz / CELL)}`;
     let chunk = chunks.get(key);
     if (!chunk) {
-      chunk = { walls: new Map(), tiles: [], flat: [], roofs: [] };
+      chunk = { walls: new Map(), spill: { pos: [], spill: [], info: [] }, tiles: [], flat: [], roofs: [] };
       chunks.set(key, chunk);
     }
     const { walls, roofs } = chunk;
@@ -214,6 +220,8 @@ function buildCity(): CityChunk[] {
         acc.col.push(c.r, c.g, c.b);
         acc.seed.push(bi);
       }
+      // the pool of window light on the pavement in front of this wall
+      pushSpill(chunk.spill, [ax, az], [bx, bz], [nx, nz], LAND_Y + 0.04, u, u1, bi, b.f, SPILL_AVEIRO);
       u = u1;
     }
 
@@ -258,9 +266,18 @@ function buildCity(): CityChunk[] {
     g.computeBoundingSphere();
     return g;
   };
+  const spillGeo = (a: Spill) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(a.pos, 3));
+    g.setAttribute("aSpill", new THREE.Float32BufferAttribute(a.spill, 2));
+    g.setAttribute("aInfo", new THREE.Float32BufferAttribute(a.info, 2));
+    g.computeBoundingSphere();
+    return g;
+  };
   return [...chunks.entries()].map(([key, ch]) => ({
     key,
     walls: [...ch.walls.entries()].map(([style, a]) => ({ style, geometry: geoFrom(a) })),
+    spill: spillGeo(ch.spill),
     tiles: capGeo(ch.tiles),
     flat: capGeo(ch.flat),
     roofs: ch.roofs,
@@ -293,6 +310,7 @@ function CityBlocks() {
               receiveShadow
             />
           ))}
+          <mesh geometry={ch.spill} material={getFootprintSpillMaterial()} />
           <mesh geometry={ch.tiles} material={capTiles} receiveShadow />
           <mesh geometry={ch.flat} material={capFlat} receiveShadow />
           <RoofInstances kind="hip" items={ch.roofs} />

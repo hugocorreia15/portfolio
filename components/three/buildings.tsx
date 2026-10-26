@@ -154,9 +154,14 @@ function facadeMaterial(style: FacadeStyle, mode: FacadeMode) {
         "#include <emissivemap_fragment>",
         `float fLit = step(0.38, bHash(vec2(bayIx * 1.7 + floorIx * 13.1, seed + 0.37)));
         // most rooms glow warm; now and then a cooler, bluer one
-        float fCool = step(0.84, bHash(vec2(floorIx * 5.3 + bayIx, seed + 9.1)));
-        vec3 fGlow = mix(uGlow, vec3(1.25, 1.45, 1.8), fCool);
-        totalEmissiveRadiance += fGlow * fMask.r * fLit * uNight;`
+        float fCool = step(0.86, bHash(vec2(floorIx * 5.3 + bayIx, seed + 9.1)));
+        // every room its own brightness, the pane brighter toward its ceiling light
+        float fBright = 0.6 + 0.55 * bHash(vec2(bayIx + floorIx * 7.7, seed + 4.2));
+        vec3 fGlow = mix(uGlow, vec3(0.75, 0.92, 1.2), fCool) * fBright;
+        float fPane = fMask.r * (0.7 + 0.45 * fract(fuv.y));
+        // the glow it throws on the frame, the sill and the wall below (mask B)
+        float fHalo = fMask.b * (1.0 - fMask.r);
+        totalEmissiveRadiance += fGlow * fLit * uNight * (fPane + fHalo * 0.5);`
       );
   };
   mat.customProgramCacheKey = () => `facade-${mode}`;
@@ -223,6 +228,161 @@ function cached<T extends THREE.Material>(key: string, make: () => T): T {
   }
   return m as T;
 }
+
+// ── light spilling from the lit windows onto the pavement ───────────────────
+
+/** How far (world units) the window light reaches out from a wall. */
+export const SPILL_REACH = 2.4;
+
+const SPILL_FRAGMENT = /* glsl */ `
+  #include <common>
+  #include <fog_pars_fragment>
+  uniform vec3 uGlow;
+  uniform float uNight;
+  varying vec2 vSpill;
+  flat varying vec2 vInfo;
+  ${HASH}
+  void main() {
+    float bay = floor(vSpill.x);
+    float c = abs(fract(vSpill.x) - 0.5);
+    float t = vSpill.y;
+    float seed = floor(vInfo.x + 0.5);
+    // the facade shader's own rolls: which ground bays are doors, which rooms are lit
+    float door = bHash(vec2(bay, seed)) < 0.42 ? 0.45 : 1.0;
+    float lit0 = step(0.38, bHash(vec2(bay * 1.7, seed + 0.37)));
+    float lit1 = step(0.38, bHash(vec2(bay * 1.7 + 13.1, seed + 0.37))) * step(1.5, vInfo.y);
+    // a window-wide pool from the ground floor, a broad faint one from the first
+    float pool0 = smoothstep(0.38 + t * 0.12, 0.1, c) * exp(-t * 2.4);
+    float pool1 = smoothstep(0.6, 0.05, c) * exp(-t * 1.5) * 0.4;
+    vec3 col = uGlow * (lit0 * door * pool0 + lit1 * pool1) * smoothstep(1.0, 0.6, t) * uNight;
+    #ifdef USE_FOG
+      col *= 1.0 - smoothstep(fogNear, fogFar, vFogDepth);
+    #endif
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
+function spillVertex(mode: FacadeMode) {
+  return /* glsl */ `
+  #include <common>
+  #include <fog_pars_vertex>
+  uniform vec2 uCell;
+  uniform float uReach;
+  varying vec2 vSpill;
+  flat varying vec2 vInfo;
+  ${mode === "box" ? "attribute vec3 aOut;\n  attribute float aT;" : "attribute vec2 aSpill;\n  attribute vec2 aInfo;"}
+  void main() {
+    ${
+      mode === "box"
+        ? `// unit-box walls: the strip's u runs along the wall like the facade's
+    vec3 iScale = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
+    vec3 sp = position * iScale;
+    float u = aOut.z > 0.5 ? sp.x + 0.5 * iScale.x
+      : aOut.z < -0.5 ? 0.5 * iScale.x - sp.x
+      : aOut.x > 0.5 ? 0.5 * iScale.z - sp.z
+      : sp.z + 0.5 * iScale.z;
+    vec4 worldPosition = modelMatrix * instanceMatrix * vec4(position, 1.0);
+    worldPosition.xyz += normalize(mat3(modelMatrix) * mat3(instanceMatrix) * aOut) * aT * uReach;
+    worldPosition.y += 0.04;
+    vSpill = vec2(u / uCell.x, aT);
+    vInfo = vec2(float(gl_InstanceID), iScale.y / uCell.y);`
+        : `vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    vSpill = aSpill;
+    vInfo = aInfo;`
+    }
+    vec4 mvPosition = viewMatrix * worldPosition;
+    gl_Position = projectionMatrix * mvPosition;
+    #include <fog_vertex>
+  }
+`;
+}
+
+/** Additive pools of window light at the foot of the walls; only drawn at night. */
+function spillMaterial(mode: FacadeMode) {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
+      uCell: { value: new THREE.Vector2(BAY, FLOOR) },
+      uReach: { value: SPILL_REACH },
+      // display-space warm white (the material isn't tone mapped)
+      uGlow: { value: new THREE.Vector3(1.0, 0.72, 0.4).multiplyScalar(0.55) },
+      uNight: { value: 0 },
+    },
+    vertexShader: spillVertex(mode),
+    fragmentShader: SPILL_FRAGMENT,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    fog: true,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+  });
+  return driveMaterial(mat, (m, night) => {
+    m.uniforms.uNight.value = night;
+    m.visible = night > 0.02;
+  });
+}
+
+/** Spill material for merged footprint walls (geometry from `pushSpill`). */
+export function getFootprintSpillMaterial() {
+  return cached("spill-attr", () => spillMaterial("attr"));
+}
+
+/** Add a wall's spill strip: the ground quad in front of a→b (outward normal n). */
+export function pushSpill(
+  out: { pos: number[]; spill: number[]; info: number[] },
+  a: [number, number],
+  b: [number, number],
+  n: [number, number],
+  y: number,
+  u0: number,
+  u1: number,
+  seed: number,
+  floors: number,
+  reach: number
+) {
+  const ax = a[0] + n[0] * reach;
+  const az = a[1] + n[1] * reach;
+  const bx = b[0] + n[0] * reach;
+  const bz = b[1] + n[1] * reach;
+  out.pos.push(a[0], y, a[1], b[0], y, b[1], bx, y, bz, a[0], y, a[1], bx, y, bz, ax, y, az);
+  out.spill.push(u0, 0, u1, 0, u1, 1, u0, 0, u1, 1, u0, 1);
+  for (let k = 0; k < 6; k++) out.info.push(seed, floors);
+}
+
+// one strip per side of the unit box; the outer edge is pushed out in the shader
+const SPILL_BOX = (() => {
+  const pos: number[] = [];
+  const outw: number[] = [];
+  const t: number[] = [];
+  const faces: Array<[number, number, number, number, number, number]> = [
+    [-0.5, 0.5, 0.5, 0.5, 0, 1],
+    [0.5, -0.5, -0.5, -0.5, 0, -1],
+    [0.5, 0.5, 0.5, -0.5, 1, 0],
+    [-0.5, -0.5, -0.5, 0.5, -1, 0],
+  ];
+  for (const [ax, az, bx, bz, ox, oz] of faces) {
+    const quad: Array<[number, number, number]> = [
+      [ax, az, 0],
+      [bx, bz, 0],
+      [bx, bz, 1],
+      [ax, az, 0],
+      [bx, bz, 1],
+      [ax, az, 1],
+    ];
+    for (const [x, z, tt] of quad) {
+      pos.push(x, 0, z);
+      outw.push(ox, 0, oz);
+      t.push(tt);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("aOut", new THREE.Float32BufferAttribute(outw, 3));
+  g.setAttribute("aT", new THREE.Float32BufferAttribute(t, 1));
+  return g;
+})();
 
 // ── unit geometries (footprint ±0.5, base at y = 0) ─────────────────────────
 
@@ -348,6 +508,7 @@ export function Buildings({
   }, [items, roofKind, style]);
 
   const bodyRef = useInstances(bodies);
+  const spillRef = useInstances(bodies);
   const roofRef = useInstances(roofs);
   const chimneyRef = useInstances(chimneys);
 
@@ -370,6 +531,12 @@ export function Buildings({
         args={[BODY, facade, bodies.length]}
         castShadow={shadows}
         receiveShadow
+      />
+      <instancedMesh
+        key={`s${bodies.length}`}
+        ref={spillRef}
+        args={[SPILL_BOX, cached("spill-box", () => spillMaterial("box")), bodies.length]}
+        frustumCulled={false}
       />
       <instancedMesh
         key={`r${roofs.length}`}

@@ -642,7 +642,7 @@ export default function Moliceiro({
   return (
     <>
       <group ref={group} scale={bs}>
-        <MoliceiroModel palette={0} />
+        <MoliceiroModel palette={0} lampPriority />
       </group>
       <WakeTrail target={group} width={1.6 * bs} emit={3.0 * bs} />
     </>

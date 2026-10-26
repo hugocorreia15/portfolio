@@ -242,18 +242,19 @@ function Lighthouse() {
   const beam = useRef<THREE.MeshBasicMaterial>(null);
   const lantern = useRef<THREE.MeshStandardMaterial>(null);
   const glow = useRef<THREE.SpriteMaterial>(null);
-  const spot = useRef<THREE.SpotLight>(null);
-  const spotTarget = useRef<THREE.Object3D>(null);
 
-  useEffect(() => {
-    if (spot.current && spotTarget.current) spot.current.target = spotTarget.current;
-  }, []);
-  // the lantern room also floods the keeper's house and the quay below
+  // the lantern room also floods the keeper's house and the quay below; its
+  // glow and beam show in the water. The sweep itself lights every surface it
+  // crosses through lib/lampLights (BEACON), so there is no real spot light.
   const lanternRoom = useRef<THREE.Group>(null);
   useEffect(() => {
     if (!lanternRoom.current) return;
     lanternRoom.current.updateWorldMatrix(true, false);
-    return registerLamps([lanternRoom.current.localToWorld(new THREE.Vector3(0, -1.2, 0))]);
+    const unregister = registerLamps([lanternRoom.current.localToWorld(new THREE.Vector3(0, -1.2, 0))]);
+    return () => {
+      unregister();
+      BEACON.on = 0;
+    };
   }, []);
 
   // a slender cone whose alpha fades from the lantern (apex) to nothing at the
@@ -288,7 +289,6 @@ function Lighthouse() {
     if (beam.current) beam.current.opacity = n * 0.42 * flick;
     if (lantern.current) lantern.current.emissiveIntensity = 0.9 + n * 3.2;
     if (glow.current) glow.current.opacity = 0.18 + n * 0.55;
-    if (spot.current) spot.current.intensity = n * 26;
   });
 
   const bands = 7;
@@ -386,17 +386,6 @@ function Lighthouse() {
         </sprite>
 
         <group ref={beacon}>
-          <object3D ref={spotTarget} position={[-13, -3.5, 0]} />
-          <spotLight
-            ref={spot}
-            position={[0, 0, 0]}
-            angle={0.34}
-            penumbra={0.7}
-            distance={44}
-            decay={1.0}
-            intensity={0}
-            color="#fff2cf"
-          />
           <mesh geometry={beamGeo} position={[-BEAM_LEN / 2, 0, 0]} rotation-z={-Math.PI / 2}>
             <meshBasicMaterial
               ref={beam}

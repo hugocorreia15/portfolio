@@ -1,12 +1,12 @@
 "use client";
 
-import { type ComponentRef, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { type ComponentRef, useEffect, useMemo, useRef } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import { Sky } from "@react-three/drei";
 import * as THREE from "three";
 import { DAY, advanceDay } from "@/lib/daynight";
 import { updateNightMaterials } from "@/lib/nightMaterials";
-import { updateLampLights } from "@/lib/lampLights";
+import { bindLampView, updateLampLights } from "@/lib/lampLights";
 import { mulberry32 } from "@/lib/ports";
 import { getTexture } from "@/lib/textures";
 
@@ -32,6 +32,11 @@ const C_NIGHT_FOG = new THREE.Color("#0a1430");
 const C_SUN = new THREE.Color("#fff3da");
 const C_SUN_DUSK = new THREE.Color("#ff8334");
 const C_MOON = new THREE.Color("#9fb8e6");
+// moonlit fill: islands stay readable at night, in a cool blue
+const C_NIGHT_FILL = new THREE.Color("#5b74ad");
+const C_DUSK_FILL = new THREE.Color("#f0b383");
+const C_NIGHT_GROUND = new THREE.Color("#3a3546");
+const C_DAY_GROUND = new THREE.Color("#5d5566");
 
 /** Drives the sun, sky, lights, fog and exposure through a full day-night loop. */
 export function DayNightController() {
@@ -43,6 +48,11 @@ export function DayNightController() {
   const sunDisc = useRef<THREE.Group>(null);
   const moonDisc = useRef<THREE.Group>(null);
   const shadowTimer = useRef(0);
+
+  // lamps and the beacon go into view space with each render's own camera
+  // (the main one, and the water's mirror camera)
+  const scene = useThree((s) => s.scene);
+  useEffect(() => bindLampView(scene), [scene]);
 
   useFrame((state, dt) => {
     const { scene, gl, camera } = state;
@@ -90,28 +100,31 @@ export function DayNightController() {
       (scene.fog as THREE.Fog).color.copy(C_DAY_FOG).lerp(C_DUSK_FOG, dusk).lerp(C_NIGHT_FOG, night);
     }
 
+    // the light keeps a steady level through sunrise and sunset: the sky's fill
+    // takes over while the sun is too low to light much, then the moon's
     if (sun.current) {
       sun.current.position.copy(sun.current.target.position).add(sunPos);
-      sun.current.intensity = up * 1.95;
+      sun.current.intensity = 1.95 * THREE.MathUtils.smoothstep(elev, -0.02, 0.45);
       sun.current.color.copy(C_SUN).lerp(C_SUN_DUSK, dusk);
     }
     if (moon.current) {
       moon.current.position.set(-sunPos.x, Math.abs(sunPos.y) * 0.5 + 80, -sunPos.z);
-      moon.current.intensity = night * 0.5;
+      moon.current.intensity = night * 1.1;
     }
     if (hemi.current) {
-      // much dimmer ambient fill at night so the scene (and the boats) go dark
-      // away from the lamps, the moon and the lighthouse beam
-      hemi.current.intensity = THREE.MathUtils.lerp(0.05, 0.5, up) + night * 0.03;
-      hemi.current.color.copy(C_DAY_SKY).lerp(C_NIGHT_SKY, night);
+      // sky fill: blue by day, warm at dusk, a dim cool moonlit fill at night
+      // (the islands stay readable while the lamps and windows carry the scene)
+      hemi.current.intensity = 0.42 + 0.08 * up + 0.18 * night;
+      hemi.current.color.copy(C_DAY_SKY).lerp(C_DUSK_FILL, dusk).lerp(C_NIGHT_FILL, night);
+      hemi.current.groundColor.copy(C_DAY_GROUND).lerp(C_NIGHT_GROUND, night);
     }
     if (ambient.current) {
-      ambient.current.intensity = THREE.MathUtils.lerp(0.04, 0.24, up) + night * 0.02;
+      ambient.current.intensity = 0.1 + 0.14 * up + 0.04 * night;
       ambient.current.color.copy(C_MOON).lerp(_c.copy(C_SUN), up);
     }
 
-    gl.toneMappingExposure = THREE.MathUtils.lerp(0.5, 1.05, up) + dusk * 0.12;
-    scene.environmentIntensity = THREE.MathUtils.lerp(0.04, 0.7, up);
+    gl.toneMappingExposure = THREE.MathUtils.lerp(0.6, 1.05, up) + dusk * 0.12;
+    scene.environmentIntensity = THREE.MathUtils.lerp(0.2, 0.7, up) - 0.16 * night;
 
     // place the discs on a capped-elevation dome so they stay in the sky view
     // instead of climbing straight overhead at noon/midnight
@@ -154,7 +167,7 @@ export function DayNightController() {
         shadow-normalBias={0.6}
       />
       <directionalLight ref={moon} color="#9fb8e6" />
-      <hemisphereLight ref={hemi} groundColor="#5d5566" />
+      <hemisphereLight ref={hemi} />
       <ambientLight ref={ambient} />
       <group ref={sunDisc}>
         <mesh>

@@ -1,9 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { getSurface } from "@/lib/textures";
-import { driveMaterial } from "@/lib/nightMaterials";
+import { driveMaterial, getLampHaloMaterial, getLanternGlassMaterial } from "@/lib/nightMaterials";
+import { registerLamps } from "@/lib/lampLights";
+import { DAY } from "@/lib/daynight";
 
 /**
  * A moliceiro built from scratch: a lofted flat-bottomed hull with the tall
@@ -390,9 +394,49 @@ function hullMaterial(pal: BoatPalette) {
   return mat;
 }
 
+// ── lanterns ────────────────────────────────────────────────────────────────
+
+// a small iron lantern (centred on its glass), hung at the bow and the stern
+const LANTERN = (() => {
+  const iron = mergeGeometries([
+    new THREE.BoxGeometry(0.17, 0.025, 0.17).translate(0, -0.1, 0),
+    new THREE.ConeGeometry(0.12, 0.09, 4).rotateY(Math.PI / 4).translate(0, 0.135, 0),
+    new THREE.TorusGeometry(0.035, 0.008, 4, 10).translate(0, 0.2, 0),
+    ...[-1, 1].flatMap((sx) =>
+      [-1, 1].map((sz) => new THREE.BoxGeometry(0.014, 0.18, 0.014).translate(sx * 0.068, 0, sz * 0.068))
+    ),
+  ]);
+  const glass = new THREE.BoxGeometry(0.12, 0.17, 0.12);
+  return { iron, glass };
+})();
+const LANTERN_IRON = new THREE.MeshStandardMaterial({ color: "#1f2226", roughness: 0.5, metalness: 0.5 });
+
+function Lantern() {
+  return (
+    <>
+      <mesh geometry={LANTERN.glass} material={getLanternGlassMaterial()} />
+      <mesh geometry={LANTERN.iron} material={LANTERN_IRON} />
+      <sprite scale={[1.2, 1.2, 1]} material={getLampHaloMaterial()} />
+    </>
+  );
+}
+
 // ── the boat ────────────────────────────────────────────────────────────────
 
-export function MoliceiroModel({ palette = 0, crew = true }: { palette?: number; crew?: boolean }) {
+/** Bow lantern hangs off the swan neck, the stern one sits on the stern post. */
+const BOW_LANTERN: [number, number, number] = [0.5 * L + 0.24, 1.94, 0];
+const STERN_LANTERN: [number, number, number] = [-0.5 * L + 0.15, 1.4, 0];
+
+export function MoliceiroModel({
+  palette = 0,
+  crew = true,
+  lampPriority = false,
+}: {
+  palette?: number;
+  crew?: boolean;
+  /** keep this boat's lanterns among the lit lamps (the player's boat) */
+  lampPriority?: boolean;
+}) {
   const pal = PALETTES[palette % PALETTES.length];
   const parts = useMemo(() => getShared(), []);
   const hull = useMemo(() => hullMaterial(pal), [pal]);
@@ -400,8 +444,39 @@ export function MoliceiroModel({ palette = 0, crew = true }: { palette?: number;
   const tipY = sheer(1);
   const mastX = 0.1 * L;
 
+  // the two lanterns are moving lamps: they light the hull and the water
+  const bow = useRef<THREE.Group>(null);
+  const stern = useRef<THREE.Group>(null);
+  const lamps = useRef([new THREE.Vector3(), new THREE.Vector3()]);
+  useEffect(
+    () => registerLamps(lamps.current, { priority: lampPriority, power: 0.85 }),
+    [lampPriority]
+  );
+  const root = useRef<THREE.Group>(null);
+  useFrame(() => {
+    if (DAY.night < 0.02) return;
+    bow.current?.getWorldPosition(lamps.current[0]);
+    stern.current?.getWorldPosition(lamps.current[1]);
+  });
+
   return (
-    <group rotation-y={-Math.PI / 2}>
+    <group ref={root} rotation-y={-Math.PI / 2}>
+      {/* lanterns: an arm off the swan neck, a short post on the stern */}
+      <group ref={bow} position={BOW_LANTERN}>
+        <Lantern />
+      </group>
+      <mesh position={[0.5 * L + 0.12, 2.16, 0]} rotation-z={Math.PI / 2} material={parts.woodMat}>
+        <cylinderGeometry args={[0.018, 0.018, 0.3, 5]} />
+      </mesh>
+      <mesh position={[BOW_LANTERN[0], 2.1, 0]} material={LANTERN_IRON}>
+        <cylinderGeometry args={[0.006, 0.006, 0.1, 4]} />
+      </mesh>
+      <group ref={stern} position={STERN_LANTERN}>
+        <Lantern />
+      </group>
+      <mesh position={[STERN_LANTERN[0], 1.13, 0]} material={parts.woodMat}>
+        <cylinderGeometry args={[0.03, 0.035, 0.36, 6]} />
+      </mesh>
       <mesh geometry={parts.outer} material={hull} castShadow />
       <mesh geometry={parts.inner} material={parts.innerMat} receiveShadow />
       <mesh geometry={parts.mask} material={parts.maskMat} renderOrder={1} />
