@@ -12,8 +12,11 @@ import { shortestDelta, wrap1 } from "@/lib/ports";
 import type { MapDef } from "@/lib/maps";
 import type { PortDef } from "@/lib/ports";
 import { MoliceiroModel } from "@/components/three/moliceiroModel";
+import { hideFromMirror } from "@/lib/reflection";
+import { DAY } from "@/lib/daynight";
+import { cloudUniforms } from "@/lib/clouds";
 
-const MAX_SPEED = 9.5;
+const MAX_SPEED = 8.5;
 const MAX_REVERSE = -3.4;
 const DOCK_RANGE = 5.2;
 const BOAT_CLEARANCE = 4.4; // min centre distance between any two hulls
@@ -100,138 +103,214 @@ function rideWaves(
   obj.rotation.z = Math.atan2(hPort - hStar, 2 * beam) + roll;
 }
 
+const WAKE_VERTEX = /* glsl */ `
+  #include <fog_pars_vertex>
+  attribute vec4 aWake;
+  varying vec4 vWake;
+  varying vec2 vXZ;
+  void main() {
+    vWake = aWake;
+    vXZ = position.xz;
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    #include <fog_vertex>
+  }
+`;
+
+const WAKE_FRAGMENT = /* glsl */ `
+  #include <fog_pars_fragment>
+  uniform sampler2D uFoam;
+  uniform float uTime;
+  uniform float uNight;
+  uniform float uStern;
+  uniform float uBeam;
+  // x: side (-1.25..1.25 of the half-width), y: 0 at the bow .. 1 at the tail,
+  // z: half-width of the V here (world units), w: strength (speed, fading)
+  varying vec4 vWake;
+  varying vec2 vXZ;
+  void main() {
+    float t = vWake.y;
+    float W = vWake.z;
+    float d = abs(vWake.x) * W;
+    // foam is a lace of bubbles: cell borders plus fine streaks, drifting
+    float cells = 1.0 - texture2D(uFoam, vXZ * 0.35 + vec2(uTime * 0.01, 0.0)).b;
+    float fine = texture2D(uFoam, vXZ * 0.9 - uTime * 0.015).g;
+    float lace = cells * 0.65 + fine * 0.55;
+    // bow waves: a thin crest along each arm of the V (the Kelvin angle),
+    // spreading and fading astern, with a fainter echo inside it
+    float crest = (0.08 + t * 0.32) * uBeam * 2.0;
+    float arms = exp(-pow((W - d) / crest, 2.0)) * pow(1.0 - t, 1.3);
+    arms += exp(-pow((W * 0.8 - d) / (crest * 0.7), 2.0)) * 0.4 * pow(1.0 - t, 1.8);
+    // churned water from the stern on, about a beam wide and widening
+    float ta = clamp((t - uStern) / (1.0 - uStern), 0.0, 1.0);
+    float churn = step(uStern * 0.92, t) * smoothstep(uBeam * (1.2 + ta * 1.6), uBeam * 0.2, d) * pow(1.0 - ta, 1.4);
+    // and a faint sheen of disturbed water inside the V
+    float sheen = smoothstep(W, W * 0.2, d) * pow(1.0 - t, 2.0) * 0.1;
+    float foam = churn * smoothstep(0.2, 0.75, lace + churn * 0.25) + arms * smoothstep(0.35, 0.8, lace + 0.15);
+    float a = clamp(foam * 0.9 + sheen, 0.0, 0.95) * vWake.w;
+    #ifdef USE_FOG
+      a *= 1.0 - smoothstep(fogNear, fogFar, vFogDepth);
+    #endif
+    gl_FragColor = vec4(mix(vec3(0.94, 0.97, 1.0), vec3(0.32, 0.38, 0.5), uNight), a);
+  }
+`;
+
+// Kelvin wake: the bow waves diverge at ~19.5° either side of the track
+const KELVIN = Math.tan((19.5 * Math.PI) / 180);
+const RIB = [-1.25, -0.6, 0, 0.6, 1.25];
+
 /**
- * The boat wake — a foam fan emitted from the bow and laid along the boat's path
- * history, so foam runs the whole length of the hull (under and alongside it)
- * and trails astern as one continuous wake. Re-seated on the live water surface
- * every frame so it rolls with the swell; each rib has 5 vertices — a bright
- * core with two diverging Kelvin arms — dissolving astern with a churn shimmer.
- * Plain meshBasicMaterial so it always renders.
+ * The boat's wake, laid along its path history and re-seated on the live
+ * water surface every frame so it rolls with the swell: two thin bow-wave
+ * crests opening into a V at the Kelvin angle, churned foam from the stern on,
+ * all broken into bubbly lace. Its strength follows the boat's speed.
  */
 function WakeTrail({
   target,
   width = 1.0,
   emit = 2.8,
-  segments = 64,
+  segments = 96,
 }: {
   target: RefObject<THREE.Group | null>;
+  /** 1.6 × the boat's scale */
   width?: number;
+  /** distance from the boat's origin to its bow */
   emit?: number;
   segments?: number;
 }) {
-  const RIB = 5; // outerL, armL, core, armR, outerR
+  const k = width / 1.6;
+  const spacing = 0.32 * k;
   const geo = useMemo(() => {
     const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(segments * RIB * 3), 3));
-    g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(segments * RIB * 4), 4));
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(segments * RIB.length * 3), 3));
+    g.setAttribute("aWake", new THREE.BufferAttribute(new Float32Array(segments * RIB.length * 4), 4));
     const idx: number[] = [];
     for (let i = 0; i < segments - 1; i++) {
-      const a = i * RIB;
-      const b = (i + 1) * RIB;
-      for (let k = 0; k < RIB - 1; k++) {
-        idx.push(a + k, b + k, a + k + 1, a + k + 1, b + k, b + k + 1);
+      const a = i * RIB.length;
+      const b = (i + 1) * RIB.length;
+      for (let j = 0; j < RIB.length - 1; j++) {
+        idx.push(a + j, b + j, a + j + 1, a + j + 1, b + j, b + j + 1);
       }
     }
     g.setIndex(idx);
     return g;
   }, [segments]);
+  const uniforms = useMemo(
+    () => ({
+      ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
+      uFoam: { value: cloudUniforms().uCloudNoise.value },
+      uTime: { value: 0 },
+      uNight: { value: 0 },
+      // the hull ends ~6.6 boat-units astern of the bow
+      uStern: { value: (6.6 * k) / ((segments - 1) * spacing) },
+      uBeam: { value: 0.5 * k },
+    }),
+    [k, segments, spacing]
+  );
+  const material = useRef<THREE.ShaderMaterial>(null);
 
-  const hist = useRef<Array<{ x: number; z: number; nx: number; nz: number; on: number }> | null>(
+  // h[0] is the live head, glued to the bow; h[1..] are fixed samples one
+  // `spacing` apart, each remembering when it was laid and how fast the boat went
+  const hist = useRef<Array<{ x: number; z: number; nx: number; nz: number; t0: number; p: number }> | null>(
     null
   );
   if (hist.current == null) {
-    hist.current = Array.from({ length: segments }, () => ({ x: 0, z: 0, nx: 1, nz: 0, on: 0 }));
+    hist.current = Array.from({ length: segments }, () => ({ x: 0, z: 0, nx: 1, nz: 0, t0: -99, p: 0 }));
   }
-  const last = useRef(new THREE.Vector3());
+  const lastTime = useRef(0);
   const seeded = useRef(false);
+  // the wake lies on the surface: it isn't mirrored
+  const wake = useRef<THREE.Mesh>(null);
+  useEffect(() => {
+    if (wake.current) hideFromMirror(wake.current);
+  }, []);
 
-  useFrame((state, dt) => {
+  useFrame((state) => {
     const t = target.current;
     const h = hist.current;
     if (!t || !h) return;
     const time = state.clock.elapsedTime;
+    if (material.current) {
+      const u = material.current.uniforms;
+      u.uTime.value = time;
+      u.uNight.value = DAY.night;
+    }
     t.getWorldPosition(_wp);
-    // emit from the bow, so the foam runs the length of the hull (under and
-    // alongside it) before trailing astern as one continuous wake
+    // emit from the bow: the bow waves peel off the hull's shoulders
     const px = _wp.x + Math.sin(t.rotation.y) * emit;
     const pz = _wp.z + Math.cos(t.rotation.y) * emit;
+    const head = h[0];
 
-    // (re)seed on the first frame and after a teleport (deep link, map load)
-    if (!seeded.current || Math.hypot(px - last.current.x, pz - last.current.z) > 6) {
-      for (const s of h) {
-        s.x = px;
-        s.z = pz;
-        s.on = 0;
-      }
-      last.current.set(px, 0, pz);
+    // (re)seed on the first frame and after a teleport (deep link, map load, shark)
+    if (!seeded.current || Math.hypot(px - head.x, pz - head.z) > 6) {
+      for (const s of h) Object.assign(s, { x: px, z: pz, t0: -99, p: 0 });
+      lastTime.current = time;
       seeded.current = true;
     }
 
-    const dx = px - last.current.x;
-    const dz = pz - last.current.z;
-    const moved = Math.hypot(dx, dz);
-    if (moved > 0.26) {
-      for (let i = segments - 1; i > 0; i--) {
-        const a = h[i];
-        const b = h[i - 1];
-        a.x = b.x;
-        a.z = b.z;
-        a.nx = b.nx;
-        a.nz = b.nz;
-        a.on = b.on;
+    head.x = px;
+    head.z = pz;
+    // lay fixed samples every `spacing` behind the head — several in one frame
+    // when the boat is fast or the frame slow, so the wake never stutters
+    let gap = Math.hypot(px - h[1].x, pz - h[1].z);
+    if (gap >= spacing) {
+      const speed = gap / Math.max(time - lastTime.current, 1e-3);
+      const power = THREE.MathUtils.clamp(speed / (4.5 * k), 0.25, 1);
+      const ux = (px - h[1].x) / gap;
+      const uz = (pz - h[1].z) / gap;
+      while (gap >= spacing) {
+        const prev = h[1];
+        const last = h[segments - 1];
+        for (let i = segments - 1; i > 1; i--) h[i] = h[i - 1];
+        h[1] = Object.assign(last, {
+          x: prev.x + ux * spacing,
+          z: prev.z + uz * spacing,
+          nx: -uz,
+          nz: ux,
+          t0: time,
+          p: power,
+        });
+        gap -= spacing;
       }
-      h[0].x = px;
-      h[0].z = pz;
-      h[0].nx = -dz / moved; // unit normal to the path
-      h[0].nz = dx / moved;
-      h[0].on = 1;
-      last.current.set(px, 0, pz);
+      lastTime.current = time;
     }
+    head.nx = h[1].nx;
+    head.nz = h[1].nz;
+    head.t0 = time;
+    head.p = h[1].p;
 
-    const fade = Math.min(dt, 0.05) * 0.16; // slower dissipation — the wake lingers longer
     const pos = geo.getAttribute("position") as THREE.BufferAttribute;
-    const col = geo.getAttribute("color") as THREE.BufferAttribute;
+    const wk = geo.getAttribute("aWake") as THREE.BufferAttribute;
     for (let i = 0; i < segments; i++) {
       const s = h[i];
-      s.on = Math.max(0, s.on - fade);
+      // foam lives ~5 s, then it has dissolved
+      const life = Math.max(0, 1 - (time - s.t0) / 5);
       const tt = i / (segments - 1);
-      const w = width * (0.06 + tt * 1.95); // a triangular wedge: a point at the bow, fanning wide astern
-      const nx = s.nx;
-      const nz = s.nz;
-      const base = i * RIB;
-      let x = s.x + nx * w; // outer left
-      let z = s.z + nz * w;
-      pos.setXYZ(base, x, waterHeight(x, z, time) + 0.05, z);
-      x = s.x + nx * w * 0.5; // arm left
-      z = s.z + nz * w * 0.5;
-      pos.setXYZ(base + 1, x, waterHeight(x, z, time) + 0.05, z);
-      pos.setXYZ(base + 2, s.x, waterHeight(s.x, s.z, time) + 0.06, s.z); // core
-      x = s.x - nx * w * 0.5; // arm right
-      z = s.z - nz * w * 0.5;
-      pos.setXYZ(base + 3, x, waterHeight(x, z, time) + 0.05, z);
-      x = s.x - nx * w; // outer right
-      z = s.z - nz * w;
-      pos.setXYZ(base + 4, x, waterHeight(x, z, time) + 0.05, z);
-
-      // churn breakup (two crossing ripples) + lengthwise dissipation
-      const n1 = Math.sin(s.x * 0.9 - time * 5 + i * 0.8) * 0.5 + 0.5;
-      const n2 = Math.sin(s.z * 1.1 + time * 3.2 + i * 0.5) * 0.5 + 0.5;
-      const decay = s.on * (0.4 + 0.6 * (n1 * 0.6 + n2 * 0.4));
-      const core = decay * (1 - tt) * (1 - tt) * 0.7; // turbulent prop-wash
-      const arm = decay * (1 - tt * 0.8) * 0.55; // diverging Kelvin arms (the wedge edges)
-      col.setXYZW(base, 0.92, 0.97, 1.0, 0);
-      col.setXYZW(base + 1, 0.92, 0.97, 1.0, arm);
-      col.setXYZW(base + 2, 0.93, 0.98, 1.0, core);
-      col.setXYZW(base + 3, 0.92, 0.97, 1.0, arm);
-      col.setXYZW(base + 4, 0.92, 0.97, 1.0, 0);
+      const W = 0.42 * k + KELVIN * i * spacing;
+      for (let j = 0; j < RIB.length; j++) {
+        const x = s.x + s.nx * RIB[j] * W;
+        const z = s.z + s.nz * RIB[j] * W;
+        const v = i * RIB.length + j;
+        pos.setXYZ(v, x, waterHeight(x, z, time) + 0.05, z);
+        wk.setXYZW(v, RIB[j], tt, W, life * s.p);
+      }
     }
     pos.needsUpdate = true;
-    col.needsUpdate = true;
+    wk.needsUpdate = true;
   });
 
   return (
-    <mesh geometry={geo} frustumCulled={false} renderOrder={3}>
-      <meshBasicMaterial vertexColors transparent depthWrite={false} side={THREE.DoubleSide} toneMapped={false} />
+    <mesh ref={wake} geometry={geo} frustumCulled={false} renderOrder={3}>
+      <shaderMaterial
+        ref={material}
+        uniforms={uniforms}
+        vertexShader={WAKE_VERTEX}
+        fragmentShader={WAKE_FRAGMENT}
+        transparent
+        depthWrite={false}
+        side={THREE.DoubleSide}
+        fog
+      />
     </mesh>
   );
 }

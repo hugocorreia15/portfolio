@@ -80,7 +80,7 @@ type FacadeMode = "box" | "attr";
 const RELIEF_DEPTH = 0.16;
 
 function facadeMaterial(style: FacadeStyle, mode: FacadeMode) {
-  const { map, mask } = getFacadeAtlas(style);
+  const { map, mask, relief } = getFacadeAtlas(style);
   const mat = new THREE.MeshStandardMaterial({
     map,
     roughness: 0.88,
