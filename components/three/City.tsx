@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useMemo } from "react";
 import * as THREE from "three";
 import { BRIDGE_TS, CANAL, ISLET_TS, mulberry32 } from "@/lib/ports";
 import { getSurface, getTexture } from "@/lib/textures";
@@ -287,51 +286,6 @@ function Islets() {
   );
 }
 
-export function Clouds({
-  center = [0, 0],
-  range = 130,
-}: {
-  center?: [number, number];
-  range?: number;
-}) {
-  const group = useRef<THREE.Group>(null);
-
-  useFrame((_, dt) => {
-    group.current?.children.forEach((cloud, i) => {
-      cloud.position.x += dt * (0.35 + i * 0.08);
-      if (cloud.position.x > range) cloud.position.x = -range;
-    });
-  });
-
-  const clouds: Array<[number, number, number]> = [
-    [-40, 20, -35],
-    [30, 25, -60],
-    [-75, 18, 18],
-    [55, 23, 38],
-  ];
-
-  return (
-    <group ref={group} position={[center[0], 0, center[1]]}>
-      {clouds.map((pos, i) => (
-        <group key={i} position={pos} scale={[1 + i * 0.2, 0.55, 1]}>
-          <mesh>
-            <sphereGeometry args={[2.6, 10, 8]} />
-            <meshStandardMaterial color="#ffdfc0" transparent opacity={0.9} />
-          </mesh>
-          <mesh position={[2.4, -0.3, 0.4]}>
-            <sphereGeometry args={[1.8, 10, 8]} />
-            <meshStandardMaterial color="#ffd2ac" transparent opacity={0.9} />
-          </mesh>
-          <mesh position={[-2.3, -0.4, -0.3]}>
-            <sphereGeometry args={[1.6, 10, 8]} />
-            <meshStandardMaterial color="#ffdfc0" transparent opacity={0.9} />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
-
 export default function City() {
   return (
     <>
@@ -340,7 +294,6 @@ export default function City() {
       {BRIDGE_TS.map((t) => (
         <Bridge key={t} t={t} />
       ))}
-      <Clouds />
       <Gulls center={[0, 0]} radius={70} />
     </>
   );

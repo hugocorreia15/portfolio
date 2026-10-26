@@ -14,7 +14,7 @@ import { mulberry32 } from "@/lib/ports";
 import { getSurface, getTexture } from "@/lib/textures";
 import type { FacadeStyle } from "@/lib/facades";
 import { MODELS } from "@/lib/models";
-import { BridgeModel, Clouds } from "@/components/three/City";
+import { BridgeModel } from "@/components/three/City";
 import { GlbInstances, LampInstances, type PropPlacement } from "@/components/three/props";
 import {
   Buildings,
@@ -311,7 +311,7 @@ function CityBlocks() {
               receiveShadow
             />
           ))}
-          <mesh geometry={ch.spill} material={getFootprintSpillMaterial()} />
+          <mesh geometry={ch.spill} material={getFootprintSpillMaterial()} layers={NO_MIRROR_LAYER} />
           <mesh geometry={ch.tiles} material={capTiles} receiveShadow />
           <mesh geometry={ch.flat} material={capFlat} receiveShadow />
           <RoofInstances kind="hip" items={ch.roofs} />

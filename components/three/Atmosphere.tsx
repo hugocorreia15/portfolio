@@ -19,7 +19,8 @@ const _look = new THREE.Vector3();
 const _c = new THREE.Color();
 
 // the sun's shadow frustum covers a square this wide around what the camera
-// looks at, snapped to a grid so the shadows don't shimmer as it follows
+// looks at, snapped to whole shadow-map texels so the shadows don't shimmer
+// as it follows
 const SHADOW_HALF = 48;
 const SHADOW_MAP = 1024;
 const SHADOW_SNAP = ((2 * SHADOW_HALF) / SHADOW_MAP) * 32;

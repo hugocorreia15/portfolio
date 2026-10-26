@@ -479,13 +479,15 @@ export function Platform({ r, sandy }: { r: number; sandy: boolean }) {
     // plaza on top instead of flickering against the city ground
     const flush = { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 };
     const top = sandy
-      ? new THREE.MeshStandardMaterial({ color: "#ecdfbe", roughness: 1, map: getTexture("sand", 5, 5) })
-      : new THREE.MeshStandardMaterial({ color: "#f2ede2", ...getSurface("calcada", r * 0.36, r * 0.36) });
+      ? new THREE.MeshStandardMaterial({ color: "#ecdfbe", roughness: 1, map: getTexture("sand", 5, 5), ...flush })
+      : new THREE.MeshStandardMaterial({ color: "#f2ede2", ...getSurface("calcada", r * 0.36, r * 0.36), ...flush });
     return [side, top, side];
   }, [r, sandy]);
   return (
-    <mesh position-y={0.32} receiveShadow material={materials}>
-      <cylinderGeometry args={[r, r + 0.3, 0.64, 48]} />
+    // the wall runs well below the waterline: the swell dips to about -0.33,
+    // and a wall ending at 0 opened a flickering gap under every island
+    <mesh receiveShadow material={materials}>
+      <cylinderGeometry args={[r, r + 0.6, 1.28, 48]} />
     </mesh>
   );
 }

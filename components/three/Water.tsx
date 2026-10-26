@@ -7,6 +7,7 @@ import { BEACON, DAY } from "@/lib/daynight";
 import { getWaterRipples } from "@/lib/textures";
 import { BEACON_WEDGE, LAMP_UNIFORMS, MAX_LAMPS } from "@/lib/lampLights";
 import { hideFromMirror, MIRROR_FAR, type MirrorUniforms, mirrorUniforms, WaterMirror } from "@/lib/reflection";
+import { CLOUD_GLSL, CLOUD_UNIFORMS, cloudUniforms } from "@/lib/clouds";
 
 const VERTEX = /* glsl */ `
   #include <common>
@@ -75,6 +76,7 @@ const FRAGMENT = /* glsl */ `
   uniform vec3 uSunDir;
   uniform float uSunUp;
   uniform float uNight;
+  uniform float uDusk;
   uniform sampler2D uRipples;
   uniform vec3 uBeaconWorld;
   uniform float uBeaconHeading;
@@ -92,6 +94,7 @@ const FRAGMENT = /* glsl */ `
   varying vec3 vNormal;
   varying float vH;
   ${BEACON_WEDGE}
+  ${CLOUD_GLSL}
 
   float hash21(vec2 p) {
     p = fract(p * vec2(234.34, 435.345));
@@ -150,6 +153,13 @@ const FRAGMENT = /* glsl */ `
       0.0
     );
     vec3 sky = mix(vec3(0.55, 0.66, 0.80), vec3(1.0, 0.70, 0.42), towardSun * towardSun * 0.85);
+    // the cloud deck mirrored in the sky reflection
+    vec3 Rw = reflect(-V, N);
+    if (Rw.y > 0.02) {
+      float cd = cloudDensity(cloudUv(vWorldPos, Rw), Rw.y) * smoothstep(0.004, 0.06, Rw.y);
+      vec3 cloudCol = mix(mix(vec3(0.92, 0.93, 0.95), vec3(1.0, 0.74, 0.56), uDusk), vec3(0.1, 0.12, 0.18), uNight);
+      sky = mix(sky, cloudCol, cd * 0.7 * (1.0 - uNight * 0.85));
+    }
 
     // "patch" is a reserved word in GLSL ES 3.0 — don't rename this back
     float tonePatch = vnoise(vWorldPos.xz * 0.045 + 3.7);
@@ -259,6 +269,8 @@ export default function Water() {
       uSunDir: { value: DAY.sunDir.clone() },
       uSunUp: { value: 1 },
       uNight: { value: 0 },
+      uDusk: { value: 0 },
+      ...cloudUniforms(),
       uRipples: { value: getWaterRipples() },
       uBeaconWorld: { value: new THREE.Vector3() },
       uBeaconHeading: { value: 0 },
@@ -280,6 +292,8 @@ export default function Water() {
       u.uSunDir.value.copy(DAY.sunDir);
       u.uSunUp.value = DAY.sunUp;
       u.uNight.value = DAY.night;
+      u.uDusk.value = DAY.dusk;
+      u.uCloudTime.value = CLOUD_UNIFORMS.uCloudTime.value;
       u.uBeaconWorld.value.copy(BEACON.pos);
       u.uBeaconHeading.value = BEACON.dir;
       u.uBeaconLevel.value = BEACON.on;

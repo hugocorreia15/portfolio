@@ -555,21 +555,7 @@ export function MoliceiroModel({
             <cylinderGeometry args={[0.13, 0.17, 0.72, 8]} />
             <meshStandardMaterial color="#2b2b35" roughness={0.9} />
           </mesh>
-  // the two lanterns are moving lamps: they light the hull and the water
-  const bow = useRef<THREE.Group>(null);
-  const stern = useRef<THREE.Group>(null);
-  const lamps = useRef([new THREE.Vector3(), new THREE.Vector3()]);
-  useEffect(
-    () => registerLamps(lamps.current, { priority: lampPriority, power: 0.85 }),
-    [lampPriority]
-  );
-  const root = useRef<THREE.Group>(null);
-  useFrame(() => {
-    if (DAY.night < 0.02) return;
-    bow.current?.getWorldPosition(lamps.current[0]);
-    stern.current?.getWorldPosition(lamps.current[1]);
-  });
-
+          <mesh position-y={0.9}>
             <sphereGeometry args={[0.13, 10, 8]} />
             <meshStandardMaterial color="#e8b88f" roughness={0.8} />
           </mesh>

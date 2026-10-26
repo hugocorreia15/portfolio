@@ -16,6 +16,7 @@ import {
   DayNightController,
   NightStars,
   ShootingStars,
+  SkyClouds,
 } from "@/components/three/Atmosphere";
 
 preloadModels();
@@ -110,6 +111,7 @@ export default function Scene({
       {/* sun, moon, sky, fog and lights, all driven through the day-night loop */}
       <DayNightController />
       <NightStars />
+      <SkyClouds />
       <ShootingStars />
 
       {/* lightweight baked reflections (no external HDRI) for PBR materials */}
