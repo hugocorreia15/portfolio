@@ -76,6 +76,9 @@ const HASH = /* glsl */ `
  */
 type FacadeMode = "box" | "attr";
 
+/** How far the deepest relief (glass, doors) sits behind the frames, in world units. */
+const RELIEF_DEPTH = 0.16;
+
 function facadeMaterial(style: FacadeStyle, mode: FacadeMode) {
   const { map, mask } = getFacadeAtlas(style);
   const mat = new THREE.MeshStandardMaterial({
