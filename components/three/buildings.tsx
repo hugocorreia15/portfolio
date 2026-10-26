@@ -105,7 +105,28 @@ function facadeMaterial(style: FacadeStyle, mode: FacadeMode) {
         uniform vec2 uCell;
         varying vec2 vFacadeUv;
         flat varying float vSeed;
+        varying vec3 vTanView;
+        varying vec3 vViewT;
+        varying vec3 vViewB;
         ${mode === "attr" ? "attribute float aSeed;" : ""}`
+      )
+      .replace(
+        "#include <project_vertex>",
+        `#include <project_vertex>
+        {
+          // the wall's frame — along the facade (u), up (v), out — and the view
+          // ray in it, for the relief's parallax and its lighting
+          mat4 fModel = modelMatrix;
+          #ifdef USE_INSTANCING
+            fModel = modelMatrix * instanceMatrix;
+          #endif
+          vec3 fN = normalize(mat3(fModel) * objectNormal);
+          vec3 fT = abs(fN.y) > 0.9 ? vec3(1.0, 0.0, 0.0) : normalize(cross(vec3(0.0, 1.0, 0.0), fN)) * ${mode === "attr" ? "-1.0" : "1.0"};
+          vec3 fV = cameraPosition - (fModel * vec4(transformed, 1.0)).xyz;
+          vTanView = vec3(dot(fV, fT), fV.y, dot(fV, fN));
+          vViewT = normalize((viewMatrix * vec4(fT, 0.0)).xyz);
+          vViewB = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+        }`
       )
       .replace(
         "#include <uv_vertex>",
@@ -126,22 +147,60 @@ function facadeMaterial(style: FacadeStyle, mode: FacadeMode) {
         "#include <common>",
         `#include <common>
         uniform sampler2D uMask;
+        uniform sampler2D uRelief;
+        uniform float uDepth;
+        uniform vec2 uCell;
         uniform float uNight;
         uniform vec3 uGlow;
         varying vec2 vFacadeUv;
         flat varying float vSeed;
-        ${HASH}`
+        varying vec3 vTanView;
+        varying vec3 vViewT;
+        varying vec3 vViewB;
+        ${HASH}
+        // facade coordinates (bays, floors) -> the atlas cell that bay shows
+        vec2 facadeAtlas(vec2 fuv, float seed) {
+          float bayIx = floor(fuv.x);
+          float floorIx = floor(fuv.y);
+          float cellIx = floorIx < 0.5 ? (bHash(vec2(bayIx, seed)) < 0.42 ? 1.0 : 2.0) : 0.0;
+          return vec2((fract(fuv.x) + cellIx) / ${CELLS.toFixed(1)}, fract(fuv.y));
+        }`
       )
       .replace(
         "#include <map_fragment>",
         `vec2 fuv = vFacadeUv;
-        float bayIx = floor(fuv.x);
-        float floorIx = floor(fuv.y);
         float seed = floor(vSeed + 0.5);
-        float cellIx = floorIx < 0.5 ? (bHash(vec2(bayIx, seed)) < 0.42 ? 1.0 : 2.0) : 0.0;
-        vec2 auv = vec2((fract(fuv.x) + cellIx) / ${CELLS.toFixed(1)}, fract(fuv.y));
         vec2 gx = dFdx(fuv) * vec2(${(1 / CELLS).toFixed(4)}, 1.0);
         vec2 gy = dFdy(fuv) * vec2(${(1 / CELLS).toFixed(4)}, 1.0);
+        // relief: march into the painted height map along the view ray
+        // (parallax occlusion), only where the wall is big enough on screen
+        float fNear = 1.0 - smoothstep(0.035, 0.09, max(length(dFdx(fuv)), length(dFdy(fuv))));
+        float fHeight = 0.5;
+        if (fNear > 0.0) {
+          vec3 tv = normalize(vTanView);
+          vec2 shift = tv.xy / max(tv.z, 0.3) * (uDepth / uCell) * fNear;
+          const int STEPS = 7;
+          float layer = 1.0 / float(STEPS);
+          vec2 dUv = shift * layer;
+          float depth = 0.0;
+          float sampled = 1.0 - textureGrad(uRelief, facadeAtlas(fuv, seed), gx, gy).r;
+          for (int i = 0; i < STEPS; i++) {
+            if (depth >= sampled) break;
+            fuv -= dUv;
+            depth += layer;
+            sampled = 1.0 - textureGrad(uRelief, facadeAtlas(fuv, seed), gx, gy).r;
+          }
+          // refine between the last two layers
+          vec2 prevUv = fuv + dUv;
+          float after = sampled - depth;
+          float before = 1.0 - textureGrad(uRelief, facadeAtlas(prevUv, seed), gx, gy).r - depth + layer;
+          float w = after / (after - before + 1e-5);
+          fuv = mix(fuv, prevUv, clamp(w, 0.0, 1.0));
+          fHeight = textureGrad(uRelief, facadeAtlas(fuv, seed), gx, gy).r;
+        }
+        float bayIx = floor(fuv.x);
+        float floorIx = floor(fuv.y);
+        vec2 auv = facadeAtlas(fuv, seed);
         vec4 fTex = textureGrad(map, auv, gx, gy);
         vec4 fMask = textureGrad(uMask, auv, gx, gy);
         #ifdef USE_COLOR
@@ -149,7 +208,24 @@ function facadeMaterial(style: FacadeStyle, mode: FacadeMode) {
         #else
           vec3 fTint = vec3(1.0);
         #endif
-        diffuseColor.rgb *= mix(fTex.rgb, fTex.rgb * fTint, fMask.g);`
+        diffuseColor.rgb *= mix(fTex.rgb, fTex.rgb * fTint, fMask.g);
+        // recesses (door leaves, the glass's reveals) sit in a little shade
+        diffuseColor.rgb *= mix(0.68, 1.0, smoothstep(0.05, 0.5, fHeight));`
+      )
+      .replace(
+        "#include <normal_fragment_maps>",
+        `#include <normal_fragment_maps>
+        if (fNear > 0.0) {
+          // tilt the light with the relief: frames, sills and cornices catch it
+          vec2 e = vec2(${(1 / (256 * CELLS)).toFixed(6)}, ${(1 / 256).toFixed(6)});
+          float hR = textureGrad(uRelief, auv + vec2(e.x, 0.0), gx, gy).r;
+          float hL = textureGrad(uRelief, auv - vec2(e.x, 0.0), gx, gy).r;
+          float hU = textureGrad(uRelief, auv + vec2(0.0, e.y), gx, gy).r;
+          float hD = textureGrad(uRelief, auv - vec2(0.0, e.y), gx, gy).r;
+          float sx = (hR - hL) / (2.0 * e.x * ${CELLS.toFixed(1)} * uCell.x) * uDepth;
+          float sy = (hU - hD) / (2.0 * e.y * uCell.y) * uDepth;
+          normal = normalize(normal - (vViewT * sx + vViewB * sy) * fNear);
+        }`
       )
       .replace("#include <color_fragment>", "")
       .replace(
