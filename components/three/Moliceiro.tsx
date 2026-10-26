@@ -12,6 +12,8 @@ import { shortestDelta, wrap1 } from "@/lib/ports";
 import type { MapDef } from "@/lib/maps";
 import type { PortDef } from "@/lib/ports";
 import { MoliceiroModel } from "@/components/three/moliceiroModel";
+import { ATTACK, Shark, SharkAttack, Splash, type SplashHandle } from "@/components/three/shark";
+import { setSharkPhase } from "@/lib/shark";
 import { hideFromMirror } from "@/lib/reflection";
 import { DAY } from "@/lib/daynight";
 import { cloudUniforms } from "@/lib/clouds";
@@ -423,6 +425,15 @@ export default function Moliceiro({
   const camPos = useRef(new THREE.Vector3(6, 10, 46));
   const camLook = useRef(new THREE.Vector3(0, 1, 30));
 
+  // the shark gag: sail off the edge of the map and you get eaten (see lib/shark.ts)
+  const shark = useRef<THREE.Group>(null);
+  const splash = useRef<SplashHandle>(null);
+  const attack = useRef<SharkAttack | null>(null);
+  const sharkCooldown = useRef(0);
+  const veilOff = useRef(0);
+  const snapCamera = useRef(false);
+  useEffect(() => () => setSharkPhase("idle"), []);
+
   useEffect(() => {
     arrived.current = false;
   }, [targetIndex]);
@@ -528,8 +539,39 @@ export default function Moliceiro({
     const time = state.clock.elapsedTime;
     const manual = targetIndex === null;
     const k = keys.current;
+    const atk = attack.current;
 
-    if (!manual) {
+    if (veilOff.current && time > veilOff.current) {
+      veilOff.current = 0;
+      setSharkPhase("idle");
+    }
+
+    if (atk) {
+      // the boat holds still (and the helm is dead) while the shark does its thing
+      atk.t += dt;
+      ph.speed = 0;
+      ph.turn = 0;
+      if (atk.t < ATTACK.bite && group.current) {
+        // a nervous wobble as the fin closes in
+        rideWaves(group.current, ph.pos.x, ph.pos.z, ph.heading, time, bs, Math.sin(time * 7) * 0.08 * Math.min(atk.t, 1));
+      }
+      if (group.current && shark.current) {
+        atk.pose(shark.current, group.current, time, (x, z) => splash.current?.burst(x, z, bs));
+      }
+      if (atk.t >= ATTACK.veil) setSharkPhase("veil");
+      if (atk.t >= ATTACK.respawn) {
+        // back to the start, behind a black screen
+        ph.pos.copy(map.start.pos);
+        ph.heading = map.start.heading;
+        autoT.current = -1;
+        route.current = null;
+        attack.current = null;
+        if (shark.current) shark.current.visible = false;
+        sharkCooldown.current = time + 2;
+        veilOff.current = time + 0.45;
+        snapCamera.current = true;
+      }
+    } else if (!manual) {
       if (nearPortRef.current !== null) {
         nearPortRef.current = null;
         onNearPort(null);
@@ -636,6 +678,12 @@ export default function Moliceiro({
       ph.pos.z += Math.cos(ph.heading) * ph.speed * dt;
       if (avoidBoats(ph.pos, 0, BOAT_CLEARANCE * bs)) ph.speed *= Math.max(0, 1 - 5 * dt);
       if (map.constrain(ph.pos)) ph.speed *= Math.max(0, 1 - 3 * dt);
+      // off the edge of the map? here comes the shark
+      if (time > sharkCooldown.current && map.offMap(ph.pos, ph.heading)) {
+        attack.current = new SharkAttack(ph.pos, ph.heading, bs);
+        setSharkPhase("attack");
+        k.clear();
+      }
 
       // alongside a pier? offer to dock
       let near: number | null = null;
@@ -662,7 +710,7 @@ export default function Moliceiro({
     BOATS[0].z = ph.pos.z;
     BOATS[0].active = true;
 
-    if (group.current) {
+    if (group.current && !attack.current) {
       const lean =
         -ph.turn * Math.min(Math.abs(ph.speed) / MAX_SPEED, 1) * 0.14;
       rideWaves(group.current, ph.pos.x, ph.pos.z, ph.heading, time, bs, lean);
@@ -692,7 +740,8 @@ export default function Moliceiro({
         c.yawOff = dampAngle(c.yawOff, 0, 1.1, dt);
       }
       const yaw = ph.heading + Math.PI + c.yawOff;
-      const dist = c.dist * camK;
+      // pull back for the shark's show
+      const dist = c.dist * camK * (attack.current ? 1.45 : 1);
       const horiz = Math.cos(c.pitch) * dist;
       _desired.set(
         ph.pos.x + Math.sin(yaw) * horiz,
@@ -705,6 +754,12 @@ export default function Moliceiro({
         1.5 * bs,
         ph.pos.z + Math.cos(ph.heading) * 2.5 * bs
       );
+    }
+    if (snapCamera.current) {
+      // a respawn: cut straight to the new spot instead of flying across the map
+      snapCamera.current = false;
+      camPos.current.copy(_desired);
+      camLook.current.copy(_lookAt);
     }
     const posLambda = manual ? 2.4 : 1.6;
     const lookLambda = manual ? 3.2 : 2.2;

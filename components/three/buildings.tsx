@@ -89,6 +89,8 @@ function facadeMaterial(style: FacadeStyle, mode: FacadeMode) {
   });
   const uniforms = {
     uMask: { value: mask },
+    uRelief: { value: relief },
+    uDepth: { value: RELIEF_DEPTH },
     uNight: { value: 0 },
     uGlow: { value: new THREE.Color("#ffb85c").multiplyScalar(2.3) },
     uCell: { value: new THREE.Vector2(BAY, FLOOR) },

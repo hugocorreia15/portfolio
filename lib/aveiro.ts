@@ -350,6 +350,33 @@ const KEEPOUTS: Array<{ x: number; z: number; r: number }> = [
 const BANK_MARGIN = 1.1;
 const HULL_R = 1.3; // the boat sails at 0.62 scale on this map
 
+/**
+ * Where the ria runs off the baked map: channel dead ends near the region's
+ * border. Sail to one and the shark comes (see lib/shark.ts).
+ */
+const EXITS = (() => {
+  const degree = new Map<string, number>();
+  for (const e of EDGES) for (const k of [e.aKey, e.bKey]) degree.set(k, (degree.get(k) ?? 0) + 1);
+  const [x0, z0, x1, z1] = AVEIRO_REGION;
+  const out: Array<{ x: number; z: number; r: number }> = [];
+  for (const e of EDGES) {
+    for (const [key, p] of [
+      [e.aKey, e.pts[0]],
+      [e.bKey, e.pts[e.pts.length - 1]],
+    ] as const) {
+      const border = Math.min(p.x - x0, x1 - p.x, p.z - z0, z1 - p.z);
+      const pier = AVEIRO_PORTS.some((port) => port.point.distanceTo(p) < 20);
+      // only right at the end of the channel, not on the way there
+      if (degree.get(key) === 1 && border < 70 && !pier) out.push({ x: p.x, z: p.z, r: e.halfW * 0.6 + 1 });
+    }
+  }
+  return out;
+})();
+
+export function offMapAveiro(pos: THREE.Vector3) {
+  return EXITS.some((e) => Math.hypot(pos.x - e.x, pos.z - e.z) < e.r);
+}
+
 export function constrainAveiro(pos: THREE.Vector3): boolean {
   let bestDepth = -Infinity;
   let cx = 0;

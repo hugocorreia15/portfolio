@@ -43,7 +43,8 @@ export const COLLIDERS: CircleCollider[] = (() => {
   return list;
 })();
 
-export const WORLD_RADIUS = 58;
+// the lagoon's open water reaches well past the islets; beyond it, the shark
+export const WORLD_RADIUS = 82;
 export const BOAT_RADIUS = 2.0;
 
 /** Push pos out of every collider (and back inside the lagoon). Returns true on contact. */

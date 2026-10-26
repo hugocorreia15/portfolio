@@ -11,6 +11,7 @@ import {
 import { useProgress } from "@react-three/drei";
 import { MAPS, type MapId } from "@/lib/maps";
 import Overlay from "@/components/ui/Overlay";
+import SharkOverlay from "@/components/ui/SharkOverlay";
 import Joystick from "@/components/ui/Joystick";
 
 const Scene = dynamic(() => import("@/components/three/Scene"), {
@@ -241,6 +242,7 @@ export default function PortfolioApp() {
         onSwitchMap={handleSwitchMap}
         onClose={() => setPanelOpen(false)}
       />
+      <SharkOverlay />
       <LoadingVeil />
       {coarsePointer && !panelOpen && (
         <Joystick onChange={handleJoystick} onEngage={handleManualStart} />
