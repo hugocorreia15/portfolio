@@ -265,8 +265,9 @@ function Islets() {
       <Buildings style="ribeira" items={houses} />
       {islets.map((islet, i) => (
         <group key={i} position={islet.position} rotation-y={islet.rotY}>
-          <mesh position-y={0.3} receiveShadow>
-            <cylinderGeometry args={[4.2, 4.8, 0.6, 28]} />
+          {/* reaches below the swell's troughs, so no gap opens under the edge */}
+          <mesh receiveShadow>
+            <cylinderGeometry args={[4.2, 5.4, 1.2, 28]} />
             <meshStandardMaterial color="#d9c79a" roughness={1} map={getTexture("sand", 3, 3)} />
           </mesh>
           {/* a scrap of lawn and a fisherman's boat pulled up on the sand */}

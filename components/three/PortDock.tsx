@@ -1,11 +1,13 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { PortDef } from "@/lib/ports";
 import { getSurface } from "@/lib/textures";
+import { tinted } from "@/lib/geometry";
 
 // chips fade out with camera distance so far-off piers don't clutter the HUD,
 // and near the top of the screen, where the header and map switch live
@@ -19,6 +21,24 @@ const POST_POSITIONS: Array<[number, number]> = [
   [-0.72, 4.25],
   [0.72, 4.25],
 ];
+
+// small parts merged into single meshes: a pier is three draw calls, not eleven
+const POSTS = mergeGeometries(
+  POST_POSITIONS.map(([x, z]) => new THREE.CylinderGeometry(0.09, 0.11, 1.1, 8).translate(x, 0.18, z))
+);
+const BOLLARDS = mergeGeometries(
+  [-3.3, 3.3].map((x) => new THREE.CylinderGeometry(0.08, 0.08, 0.5, 8).translate(x, 0.55, 0.95))
+);
+
+/** The striped mooring pole and its ball, in the pier's accent colour. */
+function poleGeometry(accent: string) {
+  return mergeGeometries([
+    ...[0, 1, 2, 3, 4].map((i) =>
+      tinted(new THREE.CylinderGeometry(0.15, 0.15, 0.4, 10).translate(0, 0.2 + i * 0.4, 0), i % 2 === 0 ? accent : "#f8f4ea")
+    ),
+    tinted(new THREE.SphereGeometry(0.2, 12, 10).translate(0, 2.18, 0), accent),
+  ]);
+}
 
 export default function PortDock({
   port,
@@ -42,6 +62,7 @@ export default function PortDock({
   const chipY = quayside ? 3.2 : 4.3;
   const rotY = Math.atan2(port.outward.x, port.outward.z);
   const chip = useRef<HTMLButtonElement>(null);
+  const pole = useMemo(() => poleGeometry(port.accent), [port.accent]);
   const shown = useRef(-1);
   useFrame(({ camera }) => {
     const el = chip.current;
@@ -73,12 +94,9 @@ export default function PortDock({
               <boxGeometry args={[1.2, 0.08, 1.2]} />
               <meshStandardMaterial color="#b49a78" {...getSurface("wood", 0.5, 0.5)} />
             </mesh>
-            {[-3.3, 3.3].map((x) => (
-              <mesh key={x} position={[x, 0.55, 0.95]}>
-                <cylinderGeometry args={[0.08, 0.08, 0.5, 8]} />
-                <meshStandardMaterial color="#3b332a" roughness={0.6} metalness={0.3} />
-              </mesh>
-            ))}
+            <mesh geometry={BOLLARDS}>
+              <meshStandardMaterial color="#3b332a" roughness={0.6} metalness={0.3} />
+            </mesh>
           </>
         ) : (
           <>
@@ -87,30 +105,15 @@ export default function PortDock({
               <boxGeometry args={[1.7, 0.14, 4.4]} />
               <meshStandardMaterial color="#cbb393" {...getSurface("wood", 0.8, 2)} />
             </mesh>
-            {POST_POSITIONS.map(([x, z]) => (
-              <mesh key={`${x}:${z}`} position={[x, 0.18, z]}>
-                <cylinderGeometry args={[0.09, 0.11, 1.1, 8]} />
-                <meshStandardMaterial color="#54391f" roughness={1} />
-              </mesh>
-            ))}
+            <mesh geometry={POSTS}>
+              <meshStandardMaterial color="#54391f" roughness={1} />
+            </mesh>
           </>
         )}
         {/* striped mooring pole, Ria style */}
-        <group position={quayside ? [-3.9, 0, 1.2] : [1.15, 0, 0.8]} rotation-z={0.05}>
-          {[0, 1, 2, 3, 4].map((i) => (
-            <mesh key={i} position-y={0.2 + i * 0.4}>
-              <cylinderGeometry args={[0.15, 0.15, 0.4, 10]} />
-              <meshStandardMaterial
-                color={i % 2 === 0 ? port.accent : "#f8f4ea"}
-                roughness={0.7}
-              />
-            </mesh>
-          ))}
-          <mesh position-y={2.18}>
-            <sphereGeometry args={[0.2, 12, 10]} />
-            <meshStandardMaterial color={port.accent} roughness={0.6} />
-          </mesh>
-        </group>
+        <mesh geometry={pole} position={quayside ? [-3.9, 0, 1.2] : [1.15, 0, 0.8]} rotation-z={0.05}>
+          <meshStandardMaterial vertexColors roughness={0.65} />
+        </mesh>
       </group>
 
       <Html

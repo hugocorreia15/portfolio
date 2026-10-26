@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { DAY } from "@/lib/daynight";
 import { driveMaterial } from "@/lib/nightMaterials";
 import { mulberry32 } from "@/lib/ports";
+import { NO_MIRROR_LAYER } from "@/lib/reflection";
 
 // ── flamingos ───────────────────────────────────────────────────────────────
 
@@ -196,6 +197,7 @@ export function Gulls({ center, count = 9, radius = 40 }: { center: [number, num
       ref={ref}
       args={[GULL_GEO, getGullMaterial(), birds.length]}
       frustumCulled={false}
+      layers={NO_MIRROR_LAYER}
     />
   );
 }

@@ -6,6 +6,7 @@ import { CELLS, type FacadeStyle, getFacadeAtlas } from "@/lib/facades";
 import { getSurface } from "@/lib/textures";
 import { driveMaterial } from "@/lib/nightMaterials";
 import { addLampLighting } from "@/lib/lampLights";
+import { NO_MIRROR_LAYER } from "@/lib/reflection";
 import { mulberry32 } from "@/lib/ports";
 
 /**

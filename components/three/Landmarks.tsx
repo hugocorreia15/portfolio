@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { tinted } from "@/lib/geometry";
 import { BEACON, DAY } from "@/lib/daynight";
 import type { PortDef } from "@/lib/ports";
 import { getSurface, getTexture } from "@/lib/textures";
@@ -234,6 +236,26 @@ function University() {
 }
 
 const BEAM_LEN = 17;
+
+// the tower's shaft: red and white bands, gently tapering
+const BANDS = 7;
+const SHAFT_BASE = 2.0;
+const BAND_H = 0.82;
+
+/** All the bands in one mesh (vertex colours): one draw call, one shadow caster. */
+const SHAFT = (() => {
+  const parts = Array.from({ length: BANDS }, (_, i) => {
+    const rB = THREE.MathUtils.lerp(0.62, 0.47, i / BANDS);
+    const rT = THREE.MathUtils.lerp(0.62, 0.47, (i + 1) / BANDS);
+    const g = new THREE.CylinderGeometry(rT, rB, BAND_H + 0.002, 24).translate(
+      0,
+      SHAFT_BASE + i * BAND_H + BAND_H / 2,
+      0
+    );
+    return tinted(g, i % 2 === 0 ? "#f6f2e7" : "#c9402f");
+  });
+  return mergeGeometries(parts);
+})();
 
 /** Farol da Barra — a tall slender red-and-white striped tower with a keeper's
  *  house, a glass lantern room and a rotating beacon that sweeps a beam at night. */

@@ -1,11 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { mulberry32 } from "@/lib/ports";
-import { getSurface, getTexture } from "@/lib/textures";
+import { getSurface } from "@/lib/textures";
 import { MODELS } from "@/lib/models";
 import {
   getLampHaloMaterial,
@@ -14,14 +14,26 @@ import {
   getLightPoolMaterial,
 } from "@/lib/nightMaterials";
 import { registerLamps } from "@/lib/lampLights";
+import { hideFromMirror, NO_MIRROR_LAYER } from "@/lib/reflection";
+import { tinted } from "@/lib/geometry";
+
+/** A ref whose object (and everything under it) stays out of the water's reflection. */
+function useNoMirror<T extends THREE.Object3D>() {
+  const ref = useRef<T>(null);
+  useLayoutEffect(() => {
+    if (ref.current) hideFromMirror(ref.current);
+  }, []);
+  return ref;
+}
 
 // ── GLB props ───────────────────────────────────────────────────────────────
 
 /** A clone of a baked, unit-height prop GLB (see scripts/bake-models.mjs). */
-function useProp(url: string, shadows = true) {
+function useProp(url: string, shadows = true, mirrored = true) {
   const { scene } = useGLTF(url);
   return useMemo(() => {
     const obj = scene.clone(true);
+    if (!mirrored) hideFromMirror(obj);
     obj.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -32,7 +44,7 @@ function useProp(url: string, shadows = true) {
       if (mat.name === "Material.002") mesh.material = getLanternGlassMaterial();
     });
     return obj;
-  }, [scene, shadows]);
+  }, [scene, shadows, mirrored]);
 }
 
 function PropModel({
@@ -40,13 +52,15 @@ function PropModel({
   height,
   rotY = 0,
   shadows = true,
+  mirrored = true,
 }: {
   url: string;
   height: number;
   rotY?: number;
   shadows?: boolean;
+  mirrored?: boolean;
 }) {
-  const obj = useProp(url, shadows);
+  const obj = useProp(url, shadows, mirrored);
   return <primitive object={obj} scale={height} rotation-y={rotY} />;
 }
 
@@ -103,17 +117,10 @@ export function GlbInstances({
   );
 }
 
-function GlbInstanceChunk({
-  url,
-  items,
-  shadows = true,
-}: {
-  url: string;
-  items: PropPlacement[];
-  shadows?: boolean;
-}) {
+/** The meshes of a baked GLB as (geometry, material, matrix) for instancing. */
+function useGlbParts(url: string) {
   const { scene } = useGLTF(url);
-  const parts = useMemo(() => {
+  return useMemo(() => {
     scene.updateMatrixWorld(true);
     const list: Array<{ geometry: THREE.BufferGeometry; material: THREE.Material; matrix: THREE.Matrix4 }> = [];
     scene.traverse((o) => {
@@ -128,6 +135,18 @@ function GlbInstanceChunk({
     });
     return list;
   }, [scene]);
+}
+
+function GlbInstanceChunk({
+  url,
+  items,
+  shadows = true,
+}: {
+  url: string;
+  items: PropPlacement[];
+  shadows?: boolean;
+}) {
+  const parts = useGlbParts(url);
   const refs = useRef<Array<THREE.InstancedMesh | null>>([]);
   useLayoutEffect(() => {
     parts.forEach((part, k) => {
@@ -161,20 +180,57 @@ function GlbInstanceChunk({
 
 // ── trees & bushes ──────────────────────────────────────────────────────────
 
-/** A tree from the forest pack (sometimes a big+small pair); procedural foliage
- *  stands in while the model streams in. */
+/*
+ * Trees and bushes placed one by one (landmarks, islands) are drawn by one
+ * shared set of instanced meshes: each <Tree>/<Bush> only registers its
+ * world matrix, and <PlacedProps /> (mounted once in the scene) draws them
+ * all. Two dozen GLB clones become a handful of draw calls, in the main,
+ * shadow and reflection passes alike.
+ */
+type PlacedProp = { url: string; matrix: THREE.Matrix4; shadows: boolean };
+const placedProps = new Set<PlacedProp>();
+const placedListeners = new Set<() => void>();
+let placedVersion = 0;
+
+function addPlacedProp(prop: PlacedProp) {
+  placedProps.add(prop);
+  placedVersion++;
+  placedListeners.forEach((l) => l());
+  return () => {
+    placedProps.delete(prop);
+    placedVersion++;
+    placedListeners.forEach((l) => l());
+  };
+}
+function subscribePlaced(listener: () => void) {
+  placedListeners.add(listener);
+  return () => {
+    placedListeners.delete(listener);
+  };
+}
+
+/** Register a unit-height GLB prop at this group's world transform. */
+function usePlacedProp(url: string, height: number, rotY: number, shadows: boolean) {
+  const ref = useRef<THREE.Group>(null);
+  useLayoutEffect(() => {
+    const g = ref.current;
+    if (!g) return;
+    g.updateWorldMatrix(true, false);
+    _q.setFromAxisAngle(_up, rotY);
+    const matrix = g.matrixWorld.clone().multiply(_m.compose(_p.set(0, 0, 0), _q, _s.setScalar(height)));
+    return addPlacedProp({ url, matrix, shadows });
+  }, [url, height, rotY, shadows]);
+  return ref;
+}
+
+/** A tree from the forest pack (sometimes a big+small pair). */
 export function Tree({ position, s = 1 }: { position: [number, number, number]; s?: number }) {
   const { rotY, pair } = useMemo(() => {
     const r = mulberry32(Math.round(position[0] * 53.1 + position[2] * 17.7 + 11));
     return { rotY: r() * Math.PI * 2, pair: r() > 0.62 };
   }, [position]);
-  return (
-    <group position={position}>
-      <Suspense fallback={<ProceduralTree position={[0, 0, 0]} s={s} />}>
-        <PropModel url={pair ? MODELS.treeB : MODELS.treeA} height={(pair ? 3.1 : 2.8) * s} rotY={rotY} />
-      </Suspense>
-    </group>
-  );
+  const ref = usePlacedProp(pair ? MODELS.treeB : MODELS.treeA, (pair ? 3.1 : 2.8) * s, rotY, true);
+  return <group ref={ref} position={position} />;
 }
 
 /** A leafy bush (the forest pack's crown sat low). */
@@ -183,61 +239,63 @@ export function Bush({ position, s = 1 }: { position: [number, number, number]; 
     () => mulberry32(Math.round(position[0] * 41 + position[2] * 23 + 9))() * Math.PI * 2,
     [position]
   );
+  const ref = usePlacedProp(MODELS.bush, 0.9 * s, rotY, false);
+  return <group ref={ref} position={position} />;
+}
+
+/** Draws every registered tree and bush (mount once, inside a Suspense). */
+export function PlacedProps() {
+  const version = useSyncExternalStore(subscribePlaced, () => placedVersion, () => 0);
+  const groups = useMemo(() => {
+    const byKey = new Map<string, { url: string; shadows: boolean; matrices: THREE.Matrix4[] }>();
+    for (const p of placedProps) {
+      const key = `${p.url}|${p.shadows}`;
+      let g = byKey.get(key);
+      if (!g) {
+        g = { url: p.url, shadows: p.shadows, matrices: [] };
+        byKey.set(key, g);
+      }
+      g.matrices.push(p.matrix);
+    }
+    return [...byKey.entries()];
+    // the registry is external: `version` is what changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version]);
   return (
-    <group position={position}>
-      <Suspense fallback={<ProceduralBush position={[0, 0, 0]} s={s} />}>
-        <PropModel url={MODELS.bush} height={0.9 * s} rotY={rotY} shadows={false} />
-      </Suspense>
-    </group>
+    <>
+      {groups.map(([key, g]) => (
+        <MatrixInstances key={key} url={g.url} matrices={g.matrices} shadows={g.shadows} />
+      ))}
+    </>
   );
 }
 
-/** Procedural broadleaf (clustered) or occasional pine — the fallback foliage. */
-function ProceduralTree({ position, s = 1 }: { position: [number, number, number]; s?: number }) {
-  const { trunkH, lean, blobs } = useMemo(() => {
-    const rnd = mulberry32(Math.round(position[0] * 53.1 + position[2] * 17.7 + 11));
-    const lean = (rnd() - 0.5) * 0.1;
-    const pine = rnd() > 0.72;
-    const greens = pine
-      ? ["#3c6b39", "#477f42", "#355f37"]
-      : ["#5a9c4e", "#69b05c", "#4d8a43", "#7cc06a", "#5fa553"];
-    const n = pine ? 3 : 3 + Math.floor(rnd() * 2);
-    const blobs = Array.from({ length: n }, (_, i) => {
-      const t = i / Math.max(1, n - 1);
-      return {
-        pine,
-        x: (rnd() - 0.5) * (pine ? 0.16 : 0.56),
-        y: 1.0 + t * (pine ? 1.4 : 1.0) + rnd() * 0.12,
-        z: (rnd() - 0.5) * (pine ? 0.16 : 0.56),
-        r: pine ? 0.66 - t * 0.4 : 0.33 + rnd() * 0.3,
-        c: greens[Math.floor(rnd() * greens.length)],
-      };
+function MatrixInstances({ url, matrices, shadows }: { url: string; matrices: THREE.Matrix4[]; shadows: boolean }) {
+  const parts = useGlbParts(url);
+  const refs = useRef<Array<THREE.InstancedMesh | null>>([]);
+  useLayoutEffect(() => {
+    parts.forEach((part, k) => {
+      const inst = refs.current[k];
+      if (!inst) return;
+      matrices.forEach((m, i) => inst.setMatrixAt(i, _m.multiplyMatrices(m, part.matrix)));
+      inst.instanceMatrix.needsUpdate = true;
+      inst.computeBoundingSphere();
     });
-    return { trunkH: 0.85 + rnd() * 0.4, lean, blobs };
-  }, [position]);
-
+  }, [parts, matrices]);
   return (
-    <group position={position} scale={s} rotation-z={lean}>
-      <mesh position-y={trunkH / 2} castShadow>
-        <cylinderGeometry args={[0.08, 0.18, trunkH, 7]} />
-        <meshStandardMaterial color="#8a6a47" {...getSurface("wood", 0.5, 1.4)} />
-      </mesh>
-      {blobs.map((b, i) => (
-        <mesh key={i} position={[b.x, b.y, b.z]} castShadow>
-          {b.pine ? (
-            <coneGeometry args={[b.r, b.r * 1.6, 8]} />
-          ) : (
-            <icosahedronGeometry args={[b.r, 0]} />
-          )}
-          <meshStandardMaterial
-            color={b.c}
-            roughness={1}
-            flatShading
-            map={getTexture("foliage", 1, 1)}
-          />
-        </mesh>
+    <>
+      {parts.map((part, k) => (
+        <instancedMesh
+          key={`${k}-${matrices.length}`}
+          ref={(el) => {
+            refs.current[k] = el;
+          }}
+          args={[part.geometry, part.material, matrices.length]}
+          castShadow={shadows}
+          receiveShadow
+        />
       ))}
-    </group>
+    </>
   );
 }
 
@@ -255,18 +313,19 @@ export function Bench({
   rotY?: number;
   s?: number;
 }) {
+  const root = useNoMirror<THREE.Group>();
   return (
-    <group position={position} rotation-y={rotY} scale={s}>
-      <mesh position-y={0.32} castShadow>
+    <group ref={root} position={position} rotation-y={rotY} scale={s}>
+      <mesh position-y={0.32}>
         <boxGeometry args={[1.3, 0.08, 0.4]} />
         <meshStandardMaterial color="#9c7a4f" {...getSurface("wood", 1.5, 0.5)} />
       </mesh>
-      <mesh position={[0, 0.56, -0.16]} rotation-x={-0.18} castShadow>
+      <mesh position={[0, 0.56, -0.16]} rotation-x={-0.18}>
         <boxGeometry args={[1.3, 0.36, 0.06]} />
         <meshStandardMaterial color="#9c7a4f" {...getSurface("wood", 1.5, 0.5)} />
       </mesh>
       {[-0.55, 0.55].map((x) => (
-        <mesh key={x} position={[x, 0.16, 0]} castShadow>
+        <mesh key={x} position={[x, 0.16, 0]}>
           <boxGeometry args={[0.08, 0.32, 0.38]} />
           <meshStandardMaterial color="#3b332a" roughness={0.6} metalness={0.2} />
         </mesh>
@@ -277,9 +336,10 @@ export function Bench({
 
 /** A wine/salt barrel. */
 export function Barrel({ position, s = 1 }: { position: [number, number, number]; s?: number }) {
+  const root = useNoMirror<THREE.Group>();
   return (
-    <group position={position} scale={s}>
-      <mesh position-y={0.33} castShadow>
+    <group ref={root} position={position} scale={s}>
+      <mesh position-y={0.33}>
         <cylinderGeometry args={[0.26, 0.3, 0.66, 12]} />
         <meshStandardMaterial color="#7a5230" {...getSurface("wood", 1, 0.6)} />
       </mesh>
@@ -303,13 +363,14 @@ export function Crates({
   rotY?: number;
   s?: number;
 }) {
+  const root = useNoMirror<THREE.Group>();
   return (
-    <group position={position} rotation-y={rotY} scale={s}>
-      <mesh position-y={0.3} castShadow>
+    <group ref={root} position={position} rotation-y={rotY} scale={s}>
+      <mesh position-y={0.3}>
         <boxGeometry args={[0.6, 0.6, 0.6]} />
         <meshStandardMaterial color="#9c7a4f" {...getSurface("wood", 0.8, 0.8)} />
       </mesh>
-      <mesh position={[0.18, 0.85, 0.1]} rotation-y={0.4} castShadow>
+      <mesh position={[0.18, 0.85, 0.1]} rotation-y={0.4}>
         <boxGeometry args={[0.5, 0.5, 0.5]} />
         <meshStandardMaterial color="#a8855a" {...getSurface("wood", 0.8, 0.8)} />
       </mesh>
@@ -327,18 +388,23 @@ export function Planter({
   rotY?: number;
   s?: number;
 }) {
+  // the flower heads, merged into one vertex-coloured mesh
   const flowers = useMemo(() => {
     const rnd = mulberry32(Math.round(position[0] * 31 + position[2] * 19 + 5));
-    return Array.from({ length: 8 }, () => ({
-      x: (rnd() - 0.5) * 0.8,
-      z: (rnd() - 0.5) * 0.28,
-      c: FLOWER_COLORS[Math.floor(rnd() * FLOWER_COLORS.length)],
-      h: 0.1 + rnd() * 0.12,
-    }));
+    return mergeGeometries(
+      Array.from({ length: 8 }, () => {
+        const x = (rnd() - 0.5) * 0.8;
+        const z = (rnd() - 0.5) * 0.28;
+        const color = FLOWER_COLORS[Math.floor(rnd() * FLOWER_COLORS.length)];
+        const h = 0.1 + rnd() * 0.12;
+        return tinted(new THREE.SphereGeometry(0.07, 6, 5).translate(x, 0.42 + h / 2, z), color);
+      })
+    );
   }, [position]);
+  const root = useNoMirror<THREE.Group>();
   return (
-    <group position={position} rotation-y={rotY} scale={s}>
-      <mesh position-y={0.16} castShadow>
+    <group ref={root} position={position} rotation-y={rotY} scale={s}>
+      <mesh position-y={0.16}>
         <boxGeometry args={[1, 0.32, 0.4]} />
         <meshStandardMaterial color="#8a6a47" {...getSurface("wood", 1.2, 0.5)} />
       </mesh>
@@ -346,42 +412,9 @@ export function Planter({
         <boxGeometry args={[0.9, 0.08, 0.32]} />
         <meshStandardMaterial color="#4f7e44" roughness={1} />
       </mesh>
-      {flowers.map((f, i) => (
-        <mesh key={i} position={[f.x, 0.42 + f.h / 2, f.z]}>
-          <sphereGeometry args={[0.07, 6, 5]} />
-          <meshStandardMaterial color={f.c} roughness={0.7} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-/** Low procedural foliage bush — the fallback. */
-function ProceduralBush({ position, s = 1 }: { position: [number, number, number]; s?: number }) {
-  const blobs = useMemo(() => {
-    const rnd = mulberry32(Math.round(position[0] * 41 + position[2] * 23 + 9));
-    const greens = ["#4f8a45", "#5d9c50", "#69ad5b"];
-    return Array.from({ length: 2 }, () => ({
-      x: (rnd() - 0.5) * 0.5,
-      y: 0.2 + rnd() * 0.16,
-      z: (rnd() - 0.5) * 0.5,
-      r: 0.26 + rnd() * 0.16,
-      c: greens[Math.floor(rnd() * greens.length)],
-    }));
-  }, [position]);
-  return (
-    <group position={position} scale={s}>
-      {blobs.map((b, i) => (
-        <mesh key={i} position={[b.x, b.y, b.z]} castShadow>
-          <icosahedronGeometry args={[b.r, 0]} />
-          <meshStandardMaterial
-            color={b.c}
-            roughness={1}
-            flatShading
-            map={getTexture("foliage", 1, 1)}
-          />
-        </mesh>
-      ))}
+      <mesh geometry={flowers}>
+        <meshStandardMaterial vertexColors roughness={0.7} />
+      </mesh>
     </group>
   );
 }
@@ -391,7 +424,7 @@ function ProceduralBush({ position, s = 1 }: { position: [number, number, number
 /** Warm disc of lamplight on the ground (fake light: no shader recompiles). */
 export function LightPool({ radius = 3.2, y = 0.03 }: { radius?: number; y?: number }) {
   return (
-    <mesh rotation-x={-Math.PI / 2} position-y={y} material={getLightPoolMaterial()}>
+    <mesh rotation-x={-Math.PI / 2} position-y={y} material={getLightPoolMaterial()} layers={NO_MIRROR_LAYER}>
       <circleGeometry args={[radius, 28]} />
     </mesh>
   );
@@ -420,7 +453,7 @@ export function Lamppost({
   return (
     <group ref={root} position={position} scale={s}>
       <Suspense fallback={<ProceduralLampBody />}>
-        <PropModel url={MODELS.lamp} height={3.1} />
+        <PropModel url={MODELS.lamp} height={3.1} shadows={false} mirrored={false} />
       </Suspense>
       <sprite position-y={2.75} scale={[glowScale, glowScale, 1]} material={getLampHaloMaterial()} />
       {light && <LightPool radius={3.4 * Math.sqrt(power)} />}
@@ -517,6 +550,7 @@ function PoolInstances({ items }: { items: PropPlacement[] }) {
     <instancedMesh
       key={items.length}
       ref={ref}
+      layers={NO_MIRROR_LAYER}
       args={[POOL_GEO, getLightPoolMaterial(), items.length]}
     />
   );

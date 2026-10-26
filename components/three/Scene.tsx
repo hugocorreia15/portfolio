@@ -1,17 +1,19 @@
 "use client";
 
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, Lightformer, PerformanceMonitor, Stats } from "@react-three/drei";
 import * as THREE from "three";
 import type { MapDef } from "@/lib/maps";
 import Water, { WATER_FOG } from "@/components/three/Water";
 import City from "@/components/three/City";
-import { lazy, Suspense, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Landmark from "@/components/three/Landmarks";
 import PortDock from "@/components/three/PortDock";
+import { PlacedProps } from "@/components/three/props";
 import Moliceiro, { AmbientBoats } from "@/components/three/Moliceiro";
 import { preloadModels } from "@/lib/models";
 import { installLampLighting } from "@/lib/lampLights";
+import { mirrorStats, setMirrorQuality } from "@/lib/reflection";
 import {
   DayNightController,
   NightStars,
@@ -25,14 +27,44 @@ installLampLighting();
 // the real-city geometry is a few hundred KB: only fetch it for that map
 const AveiroCity = lazy(() => import("@/components/three/AveiroCity"));
 
+// whole-frame counters (the water's mirror pass would reset three's own), plus
+// the cost of the last shadow-map refresh on its own
+const frameStats = { shadowCalls: 0, shadowTris: 0 };
+function instrumentRenderer(gl: THREE.WebGLRenderer) {
+  gl.info.autoReset = false;
+  const shadows = gl.shadowMap;
+  const render = shadows.render.bind(shadows);
+  shadows.render = (lights, scene, camera) => {
+    const c0 = gl.info.render.calls;
+    const t0 = gl.info.render.triangles;
+    render(lights, scene, camera);
+    if (gl.info.render.calls > c0) {
+      frameStats.shadowCalls = gl.info.render.calls - c0;
+      frameStats.shadowTris = gl.info.render.triangles - t0;
+    }
+  };
+  return () => {
+    gl.info.autoReset = true;
+    shadows.render = render;
+  };
+}
+
 /** ?stats: also log draw calls and triangles every few seconds. */
 function RenderInfo() {
   const next = useRef(0);
+  const gl = useThree((s) => s.gl);
+  useEffect(() => instrumentRenderer(gl), [gl]);
   useFrame(({ gl, clock, scene }) => {
+    // runs before this frame's render: the counters hold the whole last frame
+    const { calls, triangles } = gl.info.render;
+    gl.info.reset();
     if (clock.elapsedTime < next.current) return;
     next.current = clock.elapsedTime + 3;
-    const { calls, triangles } = gl.info.render;
-    console.info(`[render] ${calls} calls · ${(triangles / 1000).toFixed(0)}k tris · ${gl.info.programs?.length ?? 0} programs`);
+    console.info(
+      `[render] ${calls} calls · ${(triangles / 1000).toFixed(0)}k tris · ${gl.info.programs?.length ?? 0} programs` +
+        ` · shadow pass ${frameStats.shadowCalls} calls / ${(frameStats.shadowTris / 1000).toFixed(0)}k tris` +
+        ` · mirror ${mirrorStats.calls} calls`
+    );
     // heaviest meshes in the scene (whole scene, not just what's on screen)
     const heavy = new Map<string, number>();
     scene.traverse((o) => {
@@ -102,8 +134,14 @@ export default function Scene({
       <PerformanceMonitor
         factor={0.5}
         flipflops={4}
-        onChange={({ factor }) => setDpr(Math.round((0.7 + (maxDpr - 0.7) * factor) * 20) / 20)}
-        onFallback={() => setDpr(0.75)}
+        onChange={({ factor }) => {
+          setDpr(Math.round((0.7 + (maxDpr - 0.7) * factor) * 20) / 20);
+          setMirrorQuality(factor);
+        }}
+        onFallback={() => {
+          setDpr(0.75);
+          setMirrorQuality(0);
+        }}
       />
       <color attach="background" args={["#cfe6f2"]} />
       <fog attach="fog" args={["#cfe6f2", WATER_FOG.near, WATER_FOG.far]} />
@@ -122,6 +160,10 @@ export default function Scene({
       </Environment>
 
       <Water />
+      {/* every <Tree>/<Bush> of the landmarks and islands, instanced */}
+      <Suspense fallback={null}>
+        <PlacedProps />
+      </Suspense>
       {map.id === "island" ? (
         <City />
       ) : (
