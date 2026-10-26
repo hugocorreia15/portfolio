@@ -452,11 +452,47 @@ export function MoliceiroModel({
     () => registerLamps(lamps.current, { priority: lampPriority, power: 0.85 }),
     [lampPriority]
   );
+  // the rudder follows the turn (its tiller swings the other way), the boatman
+  // turns and leans into it and works his pole while the boat moves — all read
+  // from how the boat group (the parent) moves, so every boat gets it
   const root = useRef<THREE.Group>(null);
-  useFrame(() => {
-    if (DAY.night < 0.02) return;
-    bow.current?.getWorldPosition(lamps.current[0]);
-    stern.current?.getWorldPosition(lamps.current[1]);
+  const rudder = useRef<THREE.Group>(null);
+  const boatman = useRef<THREE.Group>(null);
+  const pole = useRef<THREE.Mesh>(null);
+  const motion = useRef({ yaw: 0, x: 0, z: 0, steer: 0, speed: 0, phase: 0, seeded: false });
+
+  useFrame((_, dt) => {
+    if (DAY.night >= 0.02) {
+      bow.current?.getWorldPosition(lamps.current[0]);
+      stern.current?.getWorldPosition(lamps.current[1]);
+    }
+    const boat = root.current?.parent;
+    if (!boat || dt <= 0) return;
+    const m = motion.current;
+    const step = Math.min(dt, 0.1);
+    const { x, z } = boat.position;
+    if (!m.seeded) {
+      Object.assign(m, { yaw: boat.rotation.y, x, z, seeded: true });
+    }
+    const dYaw = Math.atan2(Math.sin(boat.rotation.y - m.yaw), Math.cos(boat.rotation.y - m.yaw));
+    const v = Math.hypot(x - m.x, z - m.z) / step / Math.max(boat.scale.x, 0.1);
+    Object.assign(m, { yaw: boat.rotation.y, x, z });
+    // turning to starboard lowers the heading; the blade then swings to starboard
+    const steer = THREE.MathUtils.clamp((-dYaw / step) * 0.9, -0.55, 0.55);
+    m.steer = THREE.MathUtils.damp(m.steer, steer, 5, step);
+    if (v < 40) m.speed = THREE.MathUtils.damp(m.speed, v, 3, step); // ignore teleports
+    const pull = THREE.MathUtils.clamp(m.speed / 4, 0, 1);
+    m.phase += step * (1.1 + pull * 1.5);
+    if (rudder.current) rudder.current.rotation.y = m.steer;
+    if (boatman.current) {
+      boatman.current.rotation.y = m.steer * 0.7;
+      boatman.current.rotation.x = -m.steer * 0.12;
+      boatman.current.rotation.z = Math.sin(m.phase) * 0.06 * pull; // leaning into each stroke
+    }
+    if (pole.current) {
+      pole.current.rotation.z = -0.5 + Math.sin(m.phase) * 0.3 * pull;
+      pole.current.rotation.x = 0.25 - m.steer * 0.6;
+    }
   });
 
   return (
@@ -481,7 +517,7 @@ export function MoliceiroModel({
       <mesh geometry={parts.inner} material={parts.innerMat} receiveShadow />
       <mesh geometry={parts.mask} material={parts.maskMat} renderOrder={1} />
       {/* the scroll (ponteira) curling back off the swan-neck bow */}
-      <mesh position={[tipX - 0.12, tipY + 0.12, 0]} rotation-z={Math.PI * 0.15} castShadow>
+      <mesh position={[tipX - 0.12, tipY + 0.12, 0]} rotation-z={Math.PI * 0.15}>
         <torusGeometry args={[0.2, 0.05, 8, 18, Math.PI * 1.45]} />
         <meshStandardMaterial color={pal.bands[1]} roughness={0.6} />
       </mesh>
@@ -503,9 +539,9 @@ export function MoliceiroModel({
         <cylinderGeometry args={[0.03, 0.03, 2.75, 6]} />
       </mesh>
       <mesh geometry={parts.sail} material={parts.sailMat} castShadow />
-      {/* rudder and tiller */}
-      <group position={[-0.5 * L - 0.05, 0, 0]}>
-        <mesh position={[-0.25, 0.2, 0]} rotation-z={0.12} castShadow>
+      {/* rudder and tiller, turning about the stern post */}
+      <group ref={rudder} position={[-0.5 * L - 0.05, 0, 0]}>
+        <mesh position={[-0.25, 0.2, 0]} rotation-z={0.12}>
           <boxGeometry args={[0.6, 1.2, 0.06]} />
           <meshStandardMaterial color="#1f2224" roughness={0.6} />
         </mesh>
@@ -514,12 +550,26 @@ export function MoliceiroModel({
         </mesh>
       </group>
       {crew && (
-        <group position={[-2.25, -0.12, 0.05]}>
+        <group ref={boatman} position={[-2.25, -0.12, 0.05]}>
           <mesh position-y={0.42} castShadow>
             <cylinderGeometry args={[0.13, 0.17, 0.72, 8]} />
             <meshStandardMaterial color="#2b2b35" roughness={0.9} />
           </mesh>
-          <mesh position-y={0.9} castShadow>
+  // the two lanterns are moving lamps: they light the hull and the water
+  const bow = useRef<THREE.Group>(null);
+  const stern = useRef<THREE.Group>(null);
+  const lamps = useRef([new THREE.Vector3(), new THREE.Vector3()]);
+  useEffect(
+    () => registerLamps(lamps.current, { priority: lampPriority, power: 0.85 }),
+    [lampPriority]
+  );
+  const root = useRef<THREE.Group>(null);
+  useFrame(() => {
+    if (DAY.night < 0.02) return;
+    bow.current?.getWorldPosition(lamps.current[0]);
+    stern.current?.getWorldPosition(lamps.current[1]);
+  });
+
             <sphereGeometry args={[0.13, 10, 8]} />
             <meshStandardMaterial color="#e8b88f" roughness={0.8} />
           </mesh>
@@ -528,7 +578,7 @@ export function MoliceiroModel({
             <meshStandardMaterial color="#1c1c22" roughness={0.9} />
           </mesh>
           {/* the vara he punts with */}
-          <mesh position={[0.4, 0.55, 0.35]} rotation-z={-0.5} rotation-x={0.25} material={parts.woodMat}>
+          <mesh ref={pole} position={[0.4, 0.55, 0.35]} rotation-z={-0.5} rotation-x={0.25} material={parts.woodMat}>
             <cylinderGeometry args={[0.022, 0.022, 3, 6]} />
           </mesh>
         </group>

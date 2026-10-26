@@ -27,6 +27,7 @@ import {
   WALL_TINTS,
 } from "@/components/three/buildings";
 import { Gulls } from "@/components/three/wildlife";
+import { NO_MIRROR_LAYER } from "@/lib/reflection";
 
 /**
  * The real centre of Aveiro, baked from OpenStreetMap by scripts/bake-aveiro.py:
@@ -369,8 +370,9 @@ function MarshIslets() {
     <>
       {MARSH_ISLETS.map((m, i) => (
         <group key={i} position={[m.x, 0, m.z]}>
-          <mesh position-y={0.18} receiveShadow>
-            <cylinderGeometry args={[m.r, m.r + 1.2, 0.36, 24]} />
+          {/* reaches below the swell's troughs, so no gap opens under the edge */}
+          <mesh position-y={-0.12} receiveShadow>
+            <cylinderGeometry args={[m.r, m.r + 3.2, 0.96, 24]} />
             <meshStandardMaterial color="#8fa067" roughness={1} />
           </mesh>
           {/* reed beds */}
@@ -385,8 +387,6 @@ function MarshIslets() {
 }
 
 export default function AveiroCity() {
-  const cx = (X0 + X1) / 2;
-  const cz = (Z0 + Z1) / 2;
   return (
     <>
       <Suspense fallback={null}>
@@ -400,7 +400,6 @@ export default function AveiroCity() {
       {AVEIRO_BRIDGES.map((b, i) => (
         <BridgeModel key={i} position={b.pos} rotY={b.rotY} r={b.r} span={b.span} />
       ))}
-      <Clouds center={[cx, cz]} range={260} />
       <Gulls center={[-120, -60]} radius={160} count={12} />
     </>
   );

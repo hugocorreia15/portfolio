@@ -7,8 +7,10 @@ import * as THREE from "three";
 import { DAY, advanceDay } from "@/lib/daynight";
 import { updateNightMaterials } from "@/lib/nightMaterials";
 import { bindLampView, updateLampLights } from "@/lib/lampLights";
+import { hideFromMirror, showNoMirrorLayer } from "@/lib/reflection";
 import { mulberry32 } from "@/lib/ports";
 import { getTexture } from "@/lib/textures";
+import { CLOUD_GLSL, CLOUD_UNIFORMS, cloudUniforms } from "@/lib/clouds";
 
 const _X = new THREE.Vector3(1, 0, 0);
 const _sunPos = new THREE.Vector3();
@@ -19,9 +21,10 @@ const _c = new THREE.Color();
 // the sun's shadow frustum covers a square this wide around what the camera
 // looks at, snapped to a grid so the shadows don't shimmer as it follows
 const SHADOW_HALF = 48;
+const SHADOW_MAP = 1024;
+const SHADOW_SNAP = ((2 * SHADOW_HALF) / SHADOW_MAP) * 32;
 /** The sky dome rides with the camera, so it fits inside a short far plane. */
 export const SKY_RADIUS = 190;
-const SHADOW_SNAP = 4;
 
 const C_DAY_SKY = new THREE.Color("#bcdcf0");
 const C_DUSK_SKY = new THREE.Color("#e8a25f");
@@ -45,14 +48,22 @@ export function DayNightController() {
   const hemi = useRef<THREE.HemisphereLight>(null);
   const ambient = useRef<THREE.AmbientLight>(null);
   const sky = useRef<ComponentRef<typeof Sky>>(null);
+  const skyGroup = useRef<THREE.Group>(null);
   const sunDisc = useRef<THREE.Group>(null);
   const moonDisc = useRef<THREE.Group>(null);
-  const shadowTimer = useRef(0);
 
   // lamps and the beacon go into view space with each render's own camera
   // (the main one, and the water's mirror camera)
   const scene = useThree((s) => s.scene);
   useEffect(() => bindLampView(scene), [scene]);
+  // the water draws its own sky: no dome or discs in its reflection
+  useEffect(() => {
+    for (const o of [skyGroup.current, sunDisc.current, moonDisc.current]) if (o) hideFromMirror(o);
+  }, []);
+  // the main camera and the pointer still see what the mirror skips
+  const camera = useThree((s) => s.camera);
+  const raycaster = useThree((s) => s.raycaster);
+  useEffect(() => showNoMirrorLayer(camera, raycaster), [camera, raycaster]);
 
   useFrame((state, dt) => {
     const { scene, gl, camera } = state;
@@ -63,14 +74,13 @@ export function DayNightController() {
     updateLampLights(camera, night, dt);
     const sunPos = _sunPos.copy(DAY.sunDir).multiplyScalar(420);
 
-    // the sun moves slowly, so refresh shadows a few times a second, not every
-    // frame — a big saving (one full shadow pass per refresh instead of 60).
-    // Each refresh re-centres the frustum on the ground point the camera looks at.
+    // shadows are redrawn every frame (the boats move: a slower refresh makes
+    // their shadows jump), but only from this frame's main render — the
+    // water's mirror pass must not redraw them from its own camera. The
+    // frustum is re-centred on the ground point the camera looks at.
     gl.shadowMap.autoUpdate = false;
-    shadowTimer.current -= dt;
-    if (shadowTimer.current <= 0 && sun.current) {
-      gl.shadowMap.needsUpdate = true;
-      shadowTimer.current = 0.35;
+    gl.shadowMap.needsUpdate = true;
+    if (sun.current) {
       camera.getWorldDirection(_look);
       const reach = _look.y < -0.05 ? Math.min(-camera.position.y / _look.y, 60) : 40;
       _focus.copy(camera.position).addScaledVector(_look, reach);
@@ -153,11 +163,13 @@ export function DayNightController() {
 
   return (
     <>
-      <Sky ref={sky} distance={250} />
+      <group ref={skyGroup}>
+        <Sky ref={sky} distance={250} />
+      </group>
       <directionalLight
         ref={sun}
         castShadow
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={[SHADOW_MAP, SHADOW_MAP]}
         shadow-camera-left={-SHADOW_HALF}
         shadow-camera-right={SHADOW_HALF}
         shadow-camera-top={SHADOW_HALF}
@@ -174,7 +186,7 @@ export function DayNightController() {
           <sphereGeometry args={[13, 28, 28]} />
           <meshBasicMaterial color="#fff4d0" fog={false} toneMapped={false} />
         </mesh>
-        <sprite scale={[128, 128, 1]}>
+        <sprite scale={[128, 128, 1]} renderOrder={-2}>
           <spriteMaterial
             map={getTexture("foam")}
             color="#ffd05e"
@@ -193,7 +205,7 @@ export function DayNightController() {
           <sphereGeometry args={[9.5, 28, 28]} />
           <meshBasicMaterial color="#eef3ff" fog={false} toneMapped={false} />
         </mesh>
-        <sprite scale={[77, 77, 1]}>
+        <sprite scale={[77, 77, 1]} renderOrder={-2}>
           <spriteMaterial
             map={getTexture("foam")}
             color="#aec6f4"
@@ -236,6 +248,9 @@ export function NightStars() {
   }, []);
 
   const points = useRef<THREE.Points>(null);
+  useEffect(() => {
+    if (points.current) hideFromMirror(points.current);
+  }, []);
   useFrame((state) => {
     points.current?.position.copy(state.camera.position);
     if (mat.current) {
@@ -245,7 +260,7 @@ export function NightStars() {
   });
 
   return (
-    <points ref={points} geometry={geom} frustumCulled={false}>
+    <points ref={points} geometry={geom} frustumCulled={false} renderOrder={-2}>
       <pointsMaterial
         ref={mat}
         size={1.9}
@@ -283,6 +298,9 @@ export function ShootingStars() {
     }))
   );
 
+  useEffect(() => {
+    if (group.current) hideFromMirror(group.current);
+  }, []);
   useFrame((state, dt) => {
     const g = group.current;
     if (!g) return;
@@ -327,7 +345,7 @@ export function ShootingStars() {
   return (
     <group ref={group}>
       {[0, 1, 2, 3].map((i) => (
-        <mesh key={i} visible={false}>
+        <mesh key={i} visible={false} renderOrder={-2}>
           <planeGeometry args={[10, 0.22]} />
           <meshBasicMaterial
             color="#fff8e6"
@@ -342,5 +360,87 @@ export function ShootingStars() {
         </mesh>
       ))}
     </group>
+  );
+}
+
+// ── the cloud deck ──────────────────────────────────────────────────────────
+
+const CLOUD_VERTEX = /* glsl */ `
+  varying vec3 vDir;
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vDir = wp.xyz - cameraPosition;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+const CLOUD_FRAGMENT = /* glsl */ `
+  uniform vec3 uLightDir;
+  uniform float uDusk;
+  uniform float uNight;
+  varying vec3 vDir;
+  ${CLOUD_GLSL}
+  void main() {
+    vec3 d = normalize(vDir);
+    if (d.y < 0.004) discard;
+    vec2 p = cloudUv(cameraPosition, d);
+    float dens = cloudDensity(p, d.y);
+    if (dens < 0.004) discard;
+    // thicker cloud toward the light shades the far side; thin edges facing
+    // it catch a bright rim
+    float behind = cloudDensity(p + normalize(uLightDir.xz + vec2(1e-4)) * 0.02, d.y);
+    float shade = clamp(1.0 - behind * 0.6 + (dens - behind) * 0.5, 0.0, 1.0);
+    float rim = pow(max(dot(d, uLightDir), 0.0), 6.0) * (1.0 - dens) * 1.4;
+    vec3 lit = mix(mix(vec3(1.55, 1.52, 1.48), vec3(1.65, 0.98, 0.64), uDusk), vec3(0.24, 0.28, 0.4), uNight);
+    vec3 dark = mix(mix(vec3(0.6, 0.66, 0.78), vec3(0.42, 0.33, 0.44), uDusk), vec3(0.05, 0.065, 0.11), uNight);
+    vec3 col = mix(dark, lit, shade) + lit * rim;
+    // the deck reaches the horizon (where the camera mostly sees the sky),
+    // melting into the haze right at it
+    float alpha = dens * smoothstep(0.004, 0.06, d.y) * mix(0.96, 0.82, uNight);
+    gl_FragColor = vec4(col, alpha);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }
+`;
+
+const SKY_CLOUD = {
+  uLightDir: { value: new THREE.Vector3(0, 1, 0) },
+  uDusk: { value: 0 },
+  uNight: { value: 0 },
+};
+const _moonDir = new THREE.Vector3();
+
+/** Drifting cumulus over the whole map: one dome that rides with the camera. */
+export function SkyClouds() {
+  const dome = useRef<THREE.Mesh>(null);
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: { ...cloudUniforms(), ...SKY_CLOUD },
+        vertexShader: CLOUD_VERTEX,
+        fragmentShader: CLOUD_FRAGMENT,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.BackSide,
+      }),
+    []
+  );
+  useEffect(() => {
+    if (dome.current) hideFromMirror(dome.current);
+  }, []);
+  useFrame((state) => {
+    dome.current?.position.copy(state.camera.position);
+    CLOUD_UNIFORMS.uCloudTime.value = state.clock.elapsedTime;
+    // lit by the sun by day, by the moon (opposite it) at night
+    _moonDir.set(-DAY.sunDir.x, Math.abs(DAY.sunDir.y) * 0.5 + 0.4, -DAY.sunDir.z).normalize();
+    SKY_CLOUD.uLightDir.value.copy(DAY.sunDir).lerp(_moonDir, DAY.night).normalize();
+    SKY_CLOUD.uDusk.value = DAY.dusk;
+    SKY_CLOUD.uNight.value = DAY.night;
+  });
+  return (
+    <mesh ref={dome} material={material} renderOrder={-1} frustumCulled={false}>
+      {/* the upper half of a sphere, inside the far plane */}
+      <sphereGeometry args={[170, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
+    </mesh>
   );
 }

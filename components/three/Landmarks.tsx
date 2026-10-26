@@ -291,10 +291,7 @@ function Lighthouse() {
     if (glow.current) glow.current.opacity = 0.18 + n * 0.55;
   });
 
-  const bands = 7;
-  const shaftBase = 2.0;
-  const bandH = 0.82;
-  const shaftTop = shaftBase + bands * bandH;
+  const shaftTop = SHAFT_BASE + BANDS * BAND_H;
   const lanternY = shaftTop + 0.6;
   const cupolaY = shaftTop + 1.04;
 
@@ -327,16 +324,9 @@ function Lighthouse() {
       </mesh>
 
       {/* striped shaft — red/white bands, gently tapering */}
-      {Array.from({ length: bands }, (_, i) => {
-        const rB = THREE.MathUtils.lerp(0.62, 0.47, i / bands);
-        const rT = THREE.MathUtils.lerp(0.62, 0.47, (i + 1) / bands);
-        return (
-          <mesh key={i} position-y={shaftBase + i * bandH + bandH / 2} castShadow>
-            <cylinderGeometry args={[rT, rB, bandH + 0.002, 24]} />
-            <meshStandardMaterial color={i % 2 === 0 ? "#f6f2e7" : "#c9402f"} roughness={0.82} />
-          </mesh>
-        );
-      })}
+      <mesh geometry={SHAFT} castShadow>
+        <meshStandardMaterial vertexColors roughness={0.82} />
+      </mesh>
 
       {/* gallery platform + railing under the lantern */}
       <mesh position-y={shaftTop + 0.06} castShadow>
@@ -482,9 +472,12 @@ export function Platform({ r, sandy }: { r: number; sandy: boolean }) {
   const materials = useMemo(() => {
     const side = new THREE.MeshStandardMaterial({
       color: "#d6cdbb",
-      map: getTexture("ashlar", Math.round((2 * Math.PI * r) / 1.4), 1),
+      map: getTexture("ashlar", Math.round((2 * Math.PI * r) / 1.4), 2),
       roughness: 0.95,
     });
+    // the top is flush with Aveiro's quays (LAND_Y): a depth offset keeps the
+    // plaza on top instead of flickering against the city ground
+    const flush = { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 };
     const top = sandy
       ? new THREE.MeshStandardMaterial({ color: "#ecdfbe", roughness: 1, map: getTexture("sand", 5, 5) })
       : new THREE.MeshStandardMaterial({ color: "#f2ede2", ...getSurface("calcada", r * 0.36, r * 0.36) });

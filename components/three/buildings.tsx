@@ -537,6 +537,7 @@ export function Buildings({
         ref={spillRef}
         args={[SPILL_BOX, cached("spill-box", () => spillMaterial("box")), bodies.length]}
         frustumCulled={false}
+        layers={NO_MIRROR_LAYER}
       />
       <instancedMesh
         key={`r${roofs.length}`}

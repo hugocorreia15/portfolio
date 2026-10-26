@@ -645,6 +645,8 @@ export default function Moliceiro({
         <MoliceiroModel palette={0} lampPriority />
       </group>
       <WakeTrail target={group} width={1.6 * bs} emit={3.0 * bs} />
+      <Shark ref={shark} />
+      <Splash ref={splash} />
     </>
   );
 }
