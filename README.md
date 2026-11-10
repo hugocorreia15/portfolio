@@ -89,6 +89,7 @@ npm run models                     # bake public/models from assets-src/models
 python3 scripts/bake-aveiro.py     # bake the Aveiro city from OpenStreetMap
 python3 scripts/gen-calcada.py     # bake the calçada textures
 python3 scripts/gen-clouds.py      # bake the cloud-deck noise
+python3 scripts/gen-logo.py        # bake the hfc signature (logo + favicon)
 node scripts/fetch-aveiro-canals.mjs   # re-fetch the canal centrelines
 ```
 

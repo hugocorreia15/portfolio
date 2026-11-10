@@ -61,16 +61,34 @@ export default function Overlay({
   return (
     <div ref={rootRef} className="pointer-events-none absolute inset-0 z-40 text-ink">
       {/* header */}
-      <header className="absolute left-5 top-5 max-w-[60vw] md:left-8 md:top-7">
-        <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-[color:var(--ink-2)] md:text-[11px]">
-          Ria de Aveiro · Portfólio
-        </p>
-        <h1 className="mt-1 font-display text-3xl leading-none text-[color:var(--ink-1)] md:text-4xl">
-          {profile.name}
-        </h1>
-        <p className="mt-1.5 text-sm text-[color:var(--ink-2)] md:text-[15px]">
-          {profile.title}
-        </p>
+      <header className="absolute left-5 top-5 flex max-w-[60vw] items-center gap-3 md:left-8 md:top-7">
+        {/* the hfc signature, painted in the header's ink so it lightens at
+            night with the text (desktop only: phones need the room) */}
+        <span
+          aria-hidden
+          className="hidden h-[4.7rem] w-[6.5rem] shrink-0 bg-[color:var(--ink-1)] md:block"
+          style={{
+            maskImage: "url(/logo-mark.svg)",
+            WebkitMaskImage: "url(/logo-mark.svg)",
+            maskSize: "contain",
+            WebkitMaskSize: "contain",
+            maskRepeat: "no-repeat",
+            WebkitMaskRepeat: "no-repeat",
+            maskPosition: "center",
+            WebkitMaskPosition: "center",
+          }}
+        />
+        <div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-[color:var(--ink-2)] md:text-[11px]">
+            Ria de Aveiro · Portfólio
+          </p>
+          <h1 className="mt-1 font-display text-3xl leading-none text-[color:var(--ink-1)] md:text-4xl">
+            {profile.name}
+          </h1>
+          <p className="mt-1.5 text-sm text-[color:var(--ink-2)] md:text-[15px]">
+            {profile.title}
+          </p>
+        </div>
       </header>
 
       {/* map switch — the imagined island or the real Aveiro (coming soon) */}
