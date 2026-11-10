@@ -5,6 +5,7 @@ import { ASSET_CREDITS } from "@/data/credits";
 export const metadata: Metadata = {
   title: "3D Credits — Hugo Correia",
   description: "Attribution for the 3D models used in the Ria de Aveiro portfolio.",
+  alternates: { canonical: "/credits" },
 };
 
 export default function CreditsPage() {

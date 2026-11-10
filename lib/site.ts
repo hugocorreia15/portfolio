@@ -1,9 +1,10 @@
 import { profile } from "@/data/profile";
 
-/** Public origin: Vercel's production domain at build time, the known alias otherwise. */
+/** Public origin: Vercel's production domain at build time (the shortest
+ *  custom domain, hfccorreia.me), the same domain otherwise. */
 export const SITE_URL = process.env.VERCEL_PROJECT_PRODUCTION_URL
   ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-  : "https://portfolio-roan-six-76.vercel.app";
+  : "https://hfccorreia.me";
 
 export const SITE_DESCRIPTION =
   "HCI researcher and software engineer from Aveiro: eye tracking, usability evaluation and XR. Sail a moliceiro through the Ria de Aveiro to explore my research, publications and projects.";

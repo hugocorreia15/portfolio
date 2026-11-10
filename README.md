@@ -2,7 +2,7 @@
 
 An interactive portfolio where a **moliceiro** sails the Ria de Aveiro. Each
 pier is a chapter of the CV; `/cv` has the same content as a plain, printable
-page.
+page. Live at **[hfccorreia.me](https://hfccorreia.me)**.
 
 ## Two maps
 
