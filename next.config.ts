@@ -12,6 +12,11 @@ const nextConfig: NextConfig = {
       permanent: true,
     }));
   },
+  // a clean address for the email-signature page (a standalone HTML file, so
+  // no site styles touch the signature it copies)
+  async rewrites() {
+    return [{ source: "/signature", destination: "/email/signature.html" }];
+  },
 };
 
 export default nextConfig;
