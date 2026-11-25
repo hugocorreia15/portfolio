@@ -13,7 +13,8 @@ contours, smoothed into cubic Béziers).
 
 Writes public/logo.svg (the full signature), public/logo-mark.svg (heavier,
 with a shorter flourish, for small sizes such as the site header) and
-app/icon.svg (the favicon: the monogram on a tile, so it holds up at 16 px).
+app/icon.svg (the favicon: the monogram on a tile, so it holds up at 16 px),
+plus that tile as a PNG for the email signature (public/email/hfc.png).
 """
 import os
 
@@ -154,6 +155,29 @@ def strokes(weights, cut=None):
     return out
 
 
+def write_png(path, strokes_, box, px):
+    """The favicon tile as an anti-aliased PNG `px` wide: painted large, then
+    averaged down; transparent outside the tile's rounded corners."""
+    hex2bgr = lambda h: [int(h[i : i + 2], 16) for i in (5, 3, 1)]
+    scale = 6
+    mark = ink(strokes_, box, scale)
+    n = mark.shape[0]
+    tile = np.zeros((n, n), np.uint8)
+    r = int(n * 0.22)
+    cv2.rectangle(tile, (r, 0), (n - r, n), 255, -1)
+    cv2.rectangle(tile, (0, r), (n, n - r), 255, -1)
+    for cx, cy in ((r, r), (n - r, r), (r, n - r), (n - r, n - r)):
+        cv2.circle(tile, (cx, cy), r, 255, -1, cv2.LINE_AA)
+    img = np.zeros((n, n, 4), np.float32)
+    img[..., :3] = hex2bgr(TILE)
+    img[mark > 0, :3] = hex2bgr(CREAM)
+    img[..., 3] = tile
+    small = cv2.resize(img, (px, px), interpolation=cv2.INTER_AREA)
+    os.makedirs(os.path.dirname(os.path.join(ROOT, path)), exist_ok=True)
+    cv2.imwrite(os.path.join(ROOT, path), np.clip(small, 0, 255).astype(np.uint8), [cv2.IMWRITE_PNG_COMPRESSION, 9])
+    print("wrote", path, os.path.getsize(os.path.join(ROOT, path)) // 1024, "KB")
+
+
 def write(path, svg):
     with open(os.path.join(ROOT, path), "w") as f:
         f.write(svg)
@@ -183,6 +207,11 @@ if __name__ == "__main__":
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{box[0]} {box[1]} {side} {side}">'
         f'<rect {tile} fill="{TILE}"/><path fill="{CREAM}" fill-rule="evenodd" d="{d}"/></svg>\n',
     )
+
+    # the same tile as a PNG for the email signature (mail clients don't render
+    # SVG; the tile carries its own background, so it reads in dark mode too),
+    # 3x its 72 px display size. Once used in sent mail this URL must not move.
+    write_png("public/email/hfc.png", s, box, 216)
 
     # the mark for small sizes (the site header, ~4–5 rem tall): the favicon's
     # weights so the hairlines survive, no tile, the flourish tapering out early
