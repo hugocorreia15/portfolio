@@ -12,12 +12,15 @@
   h2 { font-size: 16px; margin: 32px 0 8px; }
   p { margin: 0 0 12px; }
   .card { background: #fff; border: 1px solid #dde4ea; border-radius: 14px; padding: 28px; margin: 20px 0 12px; overflow-x: auto; }
-  .fields { display: grid; gap: 14px; background: #fff; border: 1px solid #dde4ea; border-radius: 14px; padding: 18px 20px; margin-top: 20px; }
-  .fields label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+  .fields { display: grid; gap: 16px; background: #fff; border: 1px solid #dde4ea; border-radius: 14px; padding: 18px 20px; margin-top: 20px; }
+  .fields .head { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
   .choices { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; }
-  .choices label { font-weight: 400; margin: 0; display: flex; gap: 6px; align-items: center; }
-  input[type="tel"], input[type="text"] { font: inherit; width: min(100%, 260px); padding: 8px 12px; border: 1px solid #c9d6e0; border-radius: 10px; color: inherit; box-sizing: border-box; }
+  .choices label, .switch { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+  input[type="tel"], input[type="text"] { font: inherit; padding: 8px 12px; border: 1px solid #c9d6e0; border-radius: 10px; color: inherit; box-sizing: border-box; }
+  input[type="tel"] { width: min(100%, 220px); }
   input[type="text"] { width: min(100%, 460px); }
+  input:disabled { opacity: 0.45; }
   button { font: inherit; font-weight: 600; color: #fff; background: #1e4f8f; border: 0; border-radius: 999px; padding: 9px 18px; cursor: pointer; }
   button:hover { background: #16324a; }
   pre { background: #fff; border: 1px solid #dde4ea; border-radius: 10px; padding: 14px 16px; white-space: pre-wrap; font: 13px/1.6 ui-monospace, Menlo, Consolas, monospace; }
@@ -29,26 +32,33 @@
 <body>
 <main>
   <h1>Assinatura de email</h1>
-  <p class="muted">Escolhe o email e o telemóvel, copia a assinatura com o botão e cola-a nas definições do teu email (instruções em baixo).</p>
+  <p class="muted">Escolhe o que entra na assinatura, copia-a com o botão e cola-a nas definições do teu email (instruções em baixo). As escolhas ficam guardadas só neste browser.</p>
 
   <!-- the phone number is never part of this page: it's typed here (or passed
        in the link) and only kept in this browser -->
   <div class="fields">
     <div>
-      <label for="title">Título</label>
+      <label class="head" for="title">Título</label>
       <input id="title" type="text" value="PhD Researcher · Human-Computer Interaction">
     </div>
     <div>
-      <label>Email de contacto</label>
+      <span class="head">Email de contacto</span>
       <div class="choices">
         <label><input type="radio" name="email" value="hf.correia@ua.pt" checked> hf.correia@ua.pt</label>
         <label><input type="radio" name="email" value="hf_correya@hotmail.com"> hf_correya@hotmail.com</label>
+        <label><input type="radio" name="email" value=""> Sem email</label>
       </div>
     </div>
     <div>
-      <label for="tel">Telemóvel</label>
-      <input id="tel" type="tel" inputmode="tel" autocomplete="tel" placeholder="Número de telemóvel">
-      <p class="muted" style="margin:6px 0 0">Fica guardado só neste browser. Sem número, a assinatura sai sem telefone.</p>
+      <label class="head" for="tel">Telemóvel</label>
+      <div class="row">
+        <input id="tel" type="tel" inputmode="tel" autocomplete="tel" placeholder="Número de telemóvel">
+        <label class="switch"><input id="tel-on" type="checkbox" checked> Incluir na assinatura</label>
+      </div>
+    </div>
+    <div>
+      <span class="head">Links</span>
+      <div class="choices" id="links"></div>
     </div>
   </div>
 
@@ -74,26 +84,36 @@
     <li>Cria uma assinatura nova e cola (Ctrl+V) na caixa de edição.</li>
     <li>Escolhe-a como predefinida para mensagens novas e respostas e carrega em <b>Guardar</b>.</li>
   </ol>
-  <p class="muted">Se a imagem não aparecer logo depois de colar, envia um email de teste a ti próprio: alguns editores só a carregam ao enviar. Se usas as duas contas, faz uma assinatura em cada uma, cada uma com o seu email.</p>
+  <p class="muted">Podes ter várias: por exemplo uma com telemóvel para emails novos e outra sem para respostas, ou uma por conta, cada uma com o seu email. Se a imagem não aparecer logo depois de colar, envia um email de teste a ti próprio: alguns editores só a carregam ao enviar.</p>
 </main>
 <script>
   const SITE = "https://hfccorreia.me";
+  // [key, label, href, plain-text form]
   const LINKS = [
-    ["LinkedIn", "https://www.linkedin.com/in/hugo-correia-3634a52a3/", "linkedin.com/in/hugo-correia-3634a52a3"],
-    ["GitHub", "https://github.com/hugocorreia15", "github.com/hugocorreia15"],
-    ["ORCID", "https://orcid.org/0009-0009-0206-5346", "orcid.org/0009-0009-0206-5346"],
+    ["site", "hfccorreia.me", SITE, "hfccorreia.me"],
+    ["linkedin", "LinkedIn", "https://www.linkedin.com/in/hugo-correia-3634a52a3/", "linkedin.com/in/hugo-correia-3634a52a3"],
+    ["github", "GitHub", "https://github.com/hugocorreia15", "github.com/hugocorreia15"],
+    ["orcid", "ORCID", "https://orcid.org/0009-0009-0206-5346", "orcid.org/0009-0009-0206-5346"],
   ];
-  const sig = document.getElementById("sig");
-  const plain = document.getElementById("plain");
-  const tel = document.getElementById("tel");
-  const title = document.getElementById("title");
+  const $ = (id) => document.getElementById(id);
+  const sig = $("sig");
+  const plain = $("plain");
+  const title = $("title");
+  const tel = $("tel");
+  const telOn = $("tel-on");
   const radios = document.querySelectorAll('input[name="email"]');
+
+  $("links").innerHTML = LINKS.map(
+    ([key, label]) => `<label><input type="checkbox" data-link="${key}" checked> ${label}</label>`
+  ).join("");
+  const linkBoxes = document.querySelectorAll("[data-link]");
 
   const store = {
     get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
     set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
   };
   const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const emailValue = () => document.querySelector('input[name="email"]:checked').value;
 
   // Portuguese numbers get the country code (the signature travels abroad):
   // 9 digits -> +351 9xx xxx xxx; anything with its own + is kept as typed
@@ -108,49 +128,66 @@
 
   // the signature itself: one table, inline styles only, no web fonts (mail-safe)
   function render() {
-    const email = document.querySelector('input[name="email"]:checked').value;
-    const ph = phone(tel.value);
-    const link = "color:#1e4f8f;text-decoration:none;";
+    const email = emailValue();
+    const ph = telOn.checked ? phone(tel.value) : null;
+    const links = LINKS.filter(([key]) => document.querySelector(`[data-link="${key}"]`).checked);
+    const a = "color:#1e4f8f;text-decoration:none;";
     const dot = '<span style="color:#9aa8b4;">&nbsp;&middot;&nbsp;</span>';
-    const contact = [`<a href="mailto:${esc(email)}" style="${link}">${esc(email)}</a>`];
-    if (ph) contact.push(`<a href="${esc(ph.href)}" style="${link}">${esc(ph.shown)}</a>`);
-    const links = [`<a href="${SITE}" style="${link}font-weight:bold;">hfccorreia.me</a>`]
-      .concat(LINKS.map(([name, href]) => `<a href="${href}" style="${link}">${name}</a>`));
+    const contact = [];
+    if (email) contact.push(`<a href="mailto:${esc(email)}" style="${a}">${esc(email)}</a>`);
+    if (ph) contact.push(`<a href="${esc(ph.href)}" style="${a}">${esc(ph.shown)}</a>`);
+    const linkHtml = links.map(([key, label, href]) =>
+      `<a href="${href}" style="${a}${key === "site" ? "font-weight:bold;" : ""}">${label}</a>`
+    );
+    const lines = [
+      '<div style="font-family:Georgia,\'Times New Roman\',Times,serif;font-size:18px;line-height:22px;font-weight:bold;color:#16324a;">Hugo Correia</div>',
+    ];
+    if (title.value.trim()) lines.push(`<div style="font-size:13px;line-height:19px;color:#3d5468;">${esc(title.value.trim())}</div>`);
+    if (contact.length) lines.push(`<div style="font-size:13px;line-height:20px;padding-top:3px;">${contact.join(dot)}</div>`);
+    if (linkHtml.length) lines.push(`<div style="font-size:12px;line-height:19px;">${linkHtml.join(dot)}</div>`);
     sig.innerHTML =
       '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr>' +
       `<td style="padding:0 14px 0 0;vertical-align:middle;"><a href="${SITE}" style="text-decoration:none;"><img src="${SITE}/email/hfc.png" width="80" height="80" alt="Hugo Correia" style="display:block;width:80px;height:80px;border:0;"></a></td>` +
       '<td style="padding:2px 0 2px 14px;border-left:2px solid #c9d6e0;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;">' +
-      '<div style="font-family:Georgia,\'Times New Roman\',Times,serif;font-size:18px;line-height:22px;font-weight:bold;color:#16324a;">Hugo Correia</div>' +
-      `<div style="font-size:13px;line-height:19px;color:#3d5468;">${esc(title.value.trim())}</div>` +
-      `<div style="font-size:13px;line-height:20px;padding-top:3px;">${contact.join(dot)}</div>` +
-      `<div style="font-size:12px;line-height:19px;">${links.join(dot)}</div>` +
+      lines.join("") +
       "</td></tr></table>";
     plain.textContent = [
       "Hugo Correia",
       title.value.trim(),
-      [email].concat(ph ? [ph.shown] : []).join(" · "),
-      ["hfccorreia.me"].concat(LINKS.map((l) => l[2])).join(" · "),
-    ].join("\n");
+      [email, ph && ph.shown].filter(Boolean).join(" · "),
+      links.map((l) => l[3]).join(" · "),
+    ].filter(Boolean).join("\n");
+    tel.disabled = !telOn.checked;
   }
 
-  // a link like signature.html?tel=9xxxxxxxx&email=hotmail fills the fields;
-  // the query is then dropped from the address bar
+  // restore the last choices; a link like ?tel=9xxxxxxxx&email=ua|hotmail
+  // fills the fields, then the query is dropped from the address bar
   const params = new URLSearchParams(location.search);
-  tel.value = params.get("tel") ?? store.get("sig-tel") ?? "";
   title.value = store.get("sig-title") ?? title.value;
-  const wanted = params.get("email") === "hotmail" ? "hf_correya@hotmail.com" : params.get("email") === "ua" ? "hf.correia@ua.pt" : store.get("sig-email");
-  radios.forEach((r) => (r.checked = wanted ? r.value === wanted : r.checked));
+  tel.value = params.get("tel") ?? store.get("sig-tel") ?? "";
+  telOn.checked = (store.get("sig-tel-on") ?? "1") === "1";
+  const wantedEmail =
+    params.get("email") === "hotmail" ? "hf_correya@hotmail.com"
+    : params.get("email") === "ua" ? "hf.correia@ua.pt"
+    : store.get("sig-email");
+  if (wantedEmail !== null) radios.forEach((r) => (r.checked = r.value === wantedEmail));
+  const savedLinks = store.get("sig-links");
+  if (savedLinks !== null) {
+    const on = savedLinks.split(",");
+    linkBoxes.forEach((box) => (box.checked = on.includes(box.dataset.link)));
+  }
   if (params.has("tel") || params.has("email")) history.replaceState(null, "", location.pathname);
 
-  const save = () => {
-    store.set("sig-tel", tel.value);
+  function save() {
     store.set("sig-title", title.value);
-    store.set("sig-email", document.querySelector('input[name="email"]:checked').value);
+    store.set("sig-tel", tel.value);
+    store.set("sig-tel-on", telOn.checked ? "1" : "0");
+    store.set("sig-email", emailValue());
+    store.set("sig-links", [...linkBoxes].filter((b) => b.checked).map((b) => b.dataset.link).join(","));
     render();
-  };
-  tel.addEventListener("input", save);
-  title.addEventListener("input", save);
-  radios.forEach((r) => r.addEventListener("change", save));
+  }
+  [title, tel].forEach((el) => el.addEventListener("input", save));
+  [telOn, ...radios, ...linkBoxes].forEach((el) => el.addEventListener("change", save));
   save();
 
   function flash(button, label) {
@@ -161,7 +198,7 @@
 
   // copy the rendered signature (with its formatting), falling back to a
   // selection copy where the async clipboard can't write HTML
-  document.getElementById("copy-rich").addEventListener("click", async (e) => {
+  $("copy-rich").addEventListener("click", async (e) => {
     const button = e.currentTarget;
     const html = sig.innerHTML.trim();
     const text = plain.textContent.trim();
@@ -184,7 +221,7 @@
     flash(button, "Copiada ✓");
   });
 
-  document.getElementById("copy-plain").addEventListener("click", async (e) => {
+  $("copy-plain").addEventListener("click", async (e) => {
     const button = e.currentTarget;
     await navigator.clipboard.writeText(plain.textContent.trim());
     flash(button, "Copiado ✓");
