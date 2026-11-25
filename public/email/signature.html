@@ -12,6 +12,12 @@
   h2 { font-size: 16px; margin: 32px 0 8px; }
   p { margin: 0 0 12px; }
   .card { background: #fff; border: 1px solid #dde4ea; border-radius: 14px; padding: 28px; margin: 20px 0 12px; overflow-x: auto; }
+  .fields { display: grid; gap: 14px; background: #fff; border: 1px solid #dde4ea; border-radius: 14px; padding: 18px 20px; margin-top: 20px; }
+  .fields label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+  .choices { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; }
+  .choices label { font-weight: 400; margin: 0; display: flex; gap: 6px; align-items: center; }
+  input[type="tel"], input[type="text"] { font: inherit; width: min(100%, 260px); padding: 8px 12px; border: 1px solid #c9d6e0; border-radius: 10px; color: inherit; box-sizing: border-box; }
+  input[type="text"] { width: min(100%, 460px); }
   button { font: inherit; font-weight: 600; color: #fff; background: #1e4f8f; border: 0; border-radius: 999px; padding: 9px 18px; cursor: pointer; }
   button:hover { background: #16324a; }
   pre { background: #fff; border: 1px solid #dde4ea; border-radius: 10px; padding: 14px 16px; white-space: pre-wrap; font: 13px/1.6 ui-monospace, Menlo, Consolas, monospace; }
@@ -23,27 +29,35 @@
 <body>
 <main>
   <h1>Assinatura de email</h1>
-  <p class="muted">Copia a assinatura com o botão e cola-a nas definições do teu email (instruções em baixo).</p>
+  <p class="muted">Escolhe o email e o telemóvel, copia a assinatura com o botão e cola-a nas definições do teu email (instruções em baixo).</p>
 
-  <div class="card" id="sig"><table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
-<tr>
-<td style="padding:0 14px 0 0;vertical-align:middle;"><a href="https://hfccorreia.me" style="text-decoration:none;"><img src="https://hfccorreia.me/email/hfc.png" width="72" height="72" alt="Hugo Correia" style="display:block;width:72px;height:72px;border:0;"></a></td>
-<td style="padding:2px 0 2px 14px;border-left:2px solid #c9d6e0;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;">
-<div style="font-family:Georgia,'Times New Roman',Times,serif;font-size:18px;line-height:22px;font-weight:bold;color:#16324a;">Hugo Correia</div>
-<div style="font-size:13px;line-height:19px;color:#3d5468;">HCI Researcher &middot; Software Engineer</div>
-<div style="font-size:12px;line-height:18px;color:#6b7f8f;">Aveiro, Portugal</div>
-<div style="font-size:12px;line-height:20px;padding-top:2px;"><a href="https://hfccorreia.me" style="color:#1e4f8f;text-decoration:none;font-weight:bold;">hfccorreia.me</a><span style="color:#9aa8b4;">&nbsp;&middot;&nbsp;</span><a href="https://www.linkedin.com/in/hugo-correia-3634a52a3/" style="color:#1e4f8f;text-decoration:none;">LinkedIn</a><span style="color:#9aa8b4;">&nbsp;&middot;&nbsp;</span><a href="https://github.com/hugocorreia15" style="color:#1e4f8f;text-decoration:none;">GitHub</a><span style="color:#9aa8b4;">&nbsp;&middot;&nbsp;</span><a href="https://orcid.org/0009-0009-0206-5346" style="color:#1e4f8f;text-decoration:none;">ORCID</a></div>
-</td>
-</tr>
-</table></div>
+  <!-- the phone number is never part of this page: it's typed here (or passed
+       in the link) and only kept in this browser -->
+  <div class="fields">
+    <div>
+      <label for="title">Título</label>
+      <input id="title" type="text" value="PhD Researcher · Human-Computer Interaction">
+    </div>
+    <div>
+      <label>Email de contacto</label>
+      <div class="choices">
+        <label><input type="radio" name="email" value="hf.correia@ua.pt" checked> hf.correia@ua.pt</label>
+        <label><input type="radio" name="email" value="hf_correya@hotmail.com"> hf_correya@hotmail.com</label>
+      </div>
+    </div>
+    <div>
+      <label for="tel">Telemóvel</label>
+      <input id="tel" type="tel" inputmode="tel" autocomplete="tel" placeholder="Número de telemóvel">
+      <p class="muted" style="margin:6px 0 0">Fica guardado só neste browser. Sem número, a assinatura sai sem telefone.</p>
+    </div>
+  </div>
+
+  <div class="card" id="sig"></div>
   <p><button id="copy-rich" type="button">Copiar assinatura</button></p>
 
   <h2>Versão em texto simples</h2>
   <p class="muted">Para respostas rápidas ou programas de email que só aceitam texto.</p>
-  <pre id="plain">Hugo Correia
-HCI Researcher · Software Engineer
-Aveiro, Portugal
-hfccorreia.me · linkedin.com/in/hugo-correia-3634a52a3 · github.com/hugocorreia15 · orcid.org/0009-0009-0206-5346</pre>
+  <pre id="plain"></pre>
   <p><button id="copy-plain" type="button">Copiar texto</button></p>
 
   <h2>Gmail</h2>
@@ -60,12 +74,84 @@ hfccorreia.me · linkedin.com/in/hugo-correia-3634a52a3 · github.com/hugocorrei
     <li>Cria uma assinatura nova e cola (Ctrl+V) na caixa de edição.</li>
     <li>Escolhe-a como predefinida para mensagens novas e respostas e carrega em <b>Guardar</b>.</li>
   </ol>
-  <p class="muted">Se a imagem não aparecer logo depois de colar, envia um email de teste a ti próprio: alguns editores só a carregam ao enviar.</p>
-
+  <p class="muted">Se a imagem não aparecer logo depois de colar, envia um email de teste a ti próprio: alguns editores só a carregam ao enviar. Se usas as duas contas, faz uma assinatura em cada uma, cada uma com o seu email.</p>
 </main>
 <script>
+  const SITE = "https://hfccorreia.me";
+  const LINKS = [
+    ["LinkedIn", "https://www.linkedin.com/in/hugo-correia-3634a52a3/", "linkedin.com/in/hugo-correia-3634a52a3"],
+    ["GitHub", "https://github.com/hugocorreia15", "github.com/hugocorreia15"],
+    ["ORCID", "https://orcid.org/0009-0009-0206-5346", "orcid.org/0009-0009-0206-5346"],
+  ];
   const sig = document.getElementById("sig");
   const plain = document.getElementById("plain");
+  const tel = document.getElementById("tel");
+  const title = document.getElementById("title");
+  const radios = document.querySelectorAll('input[name="email"]');
+
+  const store = {
+    get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+  };
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+  // Portuguese numbers get the country code (the signature travels abroad):
+  // 9 digits -> +351 9xx xxx xxx; anything with its own + is kept as typed
+  function phone(raw) {
+    const digits = raw.replace(/[^\d+]/g, "");
+    if (!digits) return null;
+    if (/^\d{9}$/.test(digits)) {
+      return { shown: `+351 ${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`, href: `tel:+351${digits}` };
+    }
+    return { shown: raw.trim(), href: `tel:${digits}` };
+  }
+
+  // the signature itself: one table, inline styles only, no web fonts (mail-safe)
+  function render() {
+    const email = document.querySelector('input[name="email"]:checked').value;
+    const ph = phone(tel.value);
+    const link = "color:#1e4f8f;text-decoration:none;";
+    const dot = '<span style="color:#9aa8b4;">&nbsp;&middot;&nbsp;</span>';
+    const contact = [`<a href="mailto:${esc(email)}" style="${link}">${esc(email)}</a>`];
+    if (ph) contact.push(`<a href="${esc(ph.href)}" style="${link}">${esc(ph.shown)}</a>`);
+    const links = [`<a href="${SITE}" style="${link}font-weight:bold;">hfccorreia.me</a>`]
+      .concat(LINKS.map(([name, href]) => `<a href="${href}" style="${link}">${name}</a>`));
+    sig.innerHTML =
+      '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr>' +
+      `<td style="padding:0 14px 0 0;vertical-align:middle;"><a href="${SITE}" style="text-decoration:none;"><img src="${SITE}/email/hfc.png" width="80" height="80" alt="Hugo Correia" style="display:block;width:80px;height:80px;border:0;"></a></td>` +
+      '<td style="padding:2px 0 2px 14px;border-left:2px solid #c9d6e0;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;">' +
+      '<div style="font-family:Georgia,\'Times New Roman\',Times,serif;font-size:18px;line-height:22px;font-weight:bold;color:#16324a;">Hugo Correia</div>' +
+      `<div style="font-size:13px;line-height:19px;color:#3d5468;">${esc(title.value.trim())}</div>` +
+      `<div style="font-size:13px;line-height:20px;padding-top:3px;">${contact.join(dot)}</div>` +
+      `<div style="font-size:12px;line-height:19px;">${links.join(dot)}</div>` +
+      "</td></tr></table>";
+    plain.textContent = [
+      "Hugo Correia",
+      title.value.trim(),
+      [email].concat(ph ? [ph.shown] : []).join(" · "),
+      ["hfccorreia.me"].concat(LINKS.map((l) => l[2])).join(" · "),
+    ].join("\n");
+  }
+
+  // a link like signature.html?tel=9xxxxxxxx&email=hotmail fills the fields;
+  // the query is then dropped from the address bar
+  const params = new URLSearchParams(location.search);
+  tel.value = params.get("tel") ?? store.get("sig-tel") ?? "";
+  title.value = store.get("sig-title") ?? title.value;
+  const wanted = params.get("email") === "hotmail" ? "hf_correya@hotmail.com" : params.get("email") === "ua" ? "hf.correia@ua.pt" : store.get("sig-email");
+  radios.forEach((r) => (r.checked = wanted ? r.value === wanted : r.checked));
+  if (params.has("tel") || params.has("email")) history.replaceState(null, "", location.pathname);
+
+  const save = () => {
+    store.set("sig-tel", tel.value);
+    store.set("sig-title", title.value);
+    store.set("sig-email", document.querySelector('input[name="email"]:checked').value);
+    render();
+  };
+  tel.addEventListener("input", save);
+  title.addEventListener("input", save);
+  radios.forEach((r) => r.addEventListener("change", save));
+  save();
 
   function flash(button, label) {
     const before = button.textContent;
@@ -76,6 +162,7 @@ hfccorreia.me · linkedin.com/in/hugo-correia-3634a52a3 · github.com/hugocorrei
   // copy the rendered signature (with its formatting), falling back to a
   // selection copy where the async clipboard can't write HTML
   document.getElementById("copy-rich").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
     const html = sig.innerHTML.trim();
     const text = plain.textContent.trim();
     try {
@@ -94,12 +181,13 @@ hfccorreia.me · linkedin.com/in/hugo-correia-3634a52a3 · github.com/hugocorrei
       document.execCommand("copy");
       selection.removeAllRanges();
     }
-    flash(e.currentTarget, "Copiada ✓");
+    flash(button, "Copiada ✓");
   });
 
   document.getElementById("copy-plain").addEventListener("click", async (e) => {
+    const button = e.currentTarget;
     await navigator.clipboard.writeText(plain.textContent.trim());
-    flash(e.currentTarget, "Copiado ✓");
+    flash(button, "Copiado ✓");
   });
 </script>
 </body>
