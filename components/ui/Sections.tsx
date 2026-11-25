@@ -397,7 +397,7 @@ function ContactContent() {
     <>
       <p className="text-[15px] leading-relaxed text-ink/80">
         The lighthouse marks the end of the route, but it&apos;s where new journeys start. I&apos;m
-        happy to talk about research, PhD opportunities and collaborations.
+        happy to talk about research, collaborations and anything HCI.
       </p>
       <div className="space-y-1.5">
         {rows.map((row) => (

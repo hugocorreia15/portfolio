@@ -70,8 +70,8 @@ export const OWNER_AUTHOR = "Correia, H.";
 
 export const profile = {
   name: "Hugo Correia",
-  title: "HCI Researcher · Software Engineer",
-  status: "Next stop: a PhD in Human-Computer Interaction",
+  title: "PhD Researcher · Human-Computer Interaction",
+  status: "PhD researcher at the University of Aveiro since September 2026",
   location: "Aveiro, Portugal",
   email: "hf_correya@hotmail.com",
   emailAlt: "hf.correia@ua.pt",
@@ -84,7 +84,7 @@ export const profile = {
     { label: "Scientific CV", detail: "full record", href: "/cv/Hugo-Correia-Scientific-CV.pdf" },
   ],
   about: [
-    "I'm a Human-Computer Interaction researcher and software engineer from Aveiro. I hold an MSc in Informatics Engineering from the University of Aveiro (2026), where my dissertation, “In the Eye of the Beholder” (graded 20/20), explored how gaze can support the evaluation of interactive ecosystems.",
+    "I'm a Human-Computer Interaction researcher and software engineer from Aveiro, doing a PhD at the University of Aveiro since September 2026. I hold an MSc in Informatics Engineering from the University of Aveiro (2026), where my dissertation, “In the Eye of the Beholder” (graded 20/20), explored how gaze can support the evaluation of interactive ecosystems.",
     "From 2024 to 2026 I was a research fellow at IEETA. In the SENSINGHOME project I built BEHOLD, a hardware-agnostic eye-tracking infrastructure, and Avalux, a usability-testing platform, and ran user studies of Bosch touch-panel interfaces. In CADFACTS I worked with cardiologists and biomedical engineers on clinical workflows for cardiac CT analysis.",
     "Alongside research I spent five years leading the Computer Science Students' Association (NEI / AAUAv), most recently as its coordinator: hackathons, technical workshops, outreach with secondary schools and some of the largest student events on campus.",
   ],
@@ -433,6 +433,11 @@ export const profile = {
     ],
   } as Record<string, string[]>,
   education: [
+    {
+      degree: "PhD",
+      school: "University of Aveiro",
+      period: "Sep 2026 – present",
+    },
     {
       degree: "MSc in Informatics Engineering",
       school: "University of Aveiro",

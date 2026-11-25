@@ -7,6 +7,8 @@ import { DAY } from "@/lib/daynight";
 import TimeSlider from "@/components/ui/TimeSlider";
 import { SECTION_CONTENT } from "@/components/ui/Sections";
 
+const [titleRole, titleField] = profile.title.split(" · ");
+
 export default function Overlay({
   map,
   mapId,
@@ -85,8 +87,10 @@ export default function Overlay({
           <h1 className="mt-1 font-display text-3xl leading-none text-[color:var(--ink-1)] md:text-4xl">
             {profile.name}
           </h1>
+          {/* phones get the role only: the full title wraps into the time slider */}
           <p className="mt-1.5 text-sm text-[color:var(--ink-2)] md:text-[15px]">
-            {profile.title}
+            {titleRole}
+            {titleField && <span className="hidden md:inline"> · {titleField}</span>}
           </p>
         </div>
       </header>

@@ -241,7 +241,7 @@ export default function CvPage() {
 
         <Section title="Education">
           {profile.education.map((e) => (
-            <Entry key={e.degree} title={e.degree} meta={e.period} sub={`${e.school} · ${e.grade}`}>
+            <Entry key={e.degree} title={e.degree} meta={e.period} sub={e.grade ? `${e.school} · ${e.grade}` : e.school}>
               {e.thesis && (
                 <p>
                   Dissertation <em>“{e.thesis.title}”</em> — {e.thesis.grade}. Supervised by{" "}

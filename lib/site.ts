@@ -7,7 +7,7 @@ export const SITE_URL = process.env.VERCEL_PROJECT_PRODUCTION_URL
   : "https://hfccorreia.me";
 
 export const SITE_DESCRIPTION =
-  "HCI researcher and software engineer from Aveiro: eye tracking, usability evaluation and XR. Sail a moliceiro through the Ria de Aveiro to explore my research, publications and projects.";
+  "HCI researcher from Aveiro, doing a PhD at the University of Aveiro: eye tracking, usability evaluation and XR. Sail a moliceiro through the Ria de Aveiro to explore my research, publications and projects.";
 
 /** schema.org Person, rendered as JSON-LD in the root layout. */
 export const PERSON_JSON_LD = {
